@@ -1,0 +1,163 @@
+
+basic features:
+- sequencing of:
+  - digtal pulses at arbitrary times
+
+    - up to maybe the maximum free number of pins (or close to it) on the
+      arduino / uC used (and without restrictions on # simultaneously modulated
+      pins)
+
+    - should be configurable to continue some sequence of pulses indefinitely
+      (so it's usable for things like zhannetta's rearing)
+
+  - flow controller set points
+    - not sure yet whether this should be controlled from the host or from the
+      microcontroller... probably the latter (but maybe via the voltage
+      interface there?)
+      - maybe voltage interface (or something else directly from uC), with
+        serial feedback to host, to check set point is actually what you want?
+        (that voltage control is working and relationship is appropriate, etc)
+
+  - configurable default values for all things sequenced (flow rates and pin
+    states)
+    - if anything, these defaults should be something saved in non-volatile
+      memory like EEPROM
+
+  - on top of allowing times between pulses to be specified, also allow:
+    - pauses requiring manual intervention (host software or dedicated button)
+      - i think i mention this below
+
+    - maybe allow everything to be pausable at any point (maybe return valves to
+      default state when doing so?)
+      - maybe have some notion of points to pause at (though only if there is a
+        pause initiated, not required pauses) (e.g. the end of trials or
+        something)
+
+      - at least return valves to default state when pausing
+
+      - maybe with a (top-level) option to disable pausing?
+
+    - pauses for dedicated external triggers
+      - this is what would allow the timing to be dictated by single square
+        pulses from old single channel olfactometer scripts, with this acting as
+        a shim to a multi channel olfactometer
+
+      - may want one global config flag to have pulses follow another square
+        wave exactly (high and low, rather than low-to-high triggering onset
+        with timing following...)
+        (or at least per-change options to trigger on each of those?)
+
+
+- useful abstractions for common experiments in our lab, such as:
+  - [mixtures of] odors (with common metadata like concentration)
+  - trials
+  - experiments
+  - blocks
+  - randomization within experiments / blocks? (perhaps just in configuration
+    tools)
+  - pairs (different groupings too?) of flow controllers with variable
+    dilution factors
+    - err if dilution factor would be out of spec for the flow controllers?
+  - valves? (w/ diff types like NO/NC/diff # outputs)
+    - + their combination into an olfactometer?
+    - to also include notions like needing to switch manifolds to deliver
+      particular odors, or stuff like that (as i had programmed in arduino for
+      delivering my real kiwi, etc)
+
+  - odor panels, and breaking an experiment into as many recordings as
+    necessary, given a finite # of values < # of odors in odor panel.
+    try to handle randomization reasonably across these boundaries.
+
+    - and do i want options to break subsets of odor panels up by groups?
+      (e.g. control vs kiwi panel) or just do it randomly, with earlier
+      groups using up all the pins?
+      / have them call the config stuff once for each group of that's what they
+      want?
+
+
+other:
+- communication with at least some form of error detection + correction
+  - ideally, any errors (if unavoidable) trigger an error on the host, for
+    manual intervention
+
+- should be able to communicate state by one digital line that could be measured
+  by a data acquisition system alongside other signals being measured in the
+  experiment (i.e. )
+  - at least which pins are being switched, as i had implemented some form of
+    before
+
+
+host side:
+- config language (+ gui?) for:
+  - specifying pin pulses (high / low state sequences at various times)
+    - maybe either absolute times (seconds from start) or intervals?
+  - specifying whether a pulse sequence should be initiated via hardware or
+    software
+    - or should i just always allow a hardware pin to function this way as well?
+  - maybe on run, all config data (especially if separate files like a
+    json, csv, etc) should be zipped and saved somewhere, for referring to
+    later?
+    - or support for saving all to some database or something?
+
+- utilities (perhaps in the gui, if making one) for randomization
+
+- names <-> pins 
+- metadata assocation with names (e.g. names, concs for odors)
+  - config langauge should include support for a csv for this purpose
+
+- selection for whether certain pulse sequences should have manual advancement
+  between them required (e.g. so the experimenter can change some thing out)
+  - maybe allow either a hardware button or a gui for this?
+
+- programming interface for real time streaming of commands
+
+- maybe `None` or some other placeholder in arrays of input states should map to
+  default value?
+
+- have host also save information about the device running the firmware
+  (any USB info, tty / COM name, etc)
+
+
+uc side:
+- should be careful not to have overflow issues affect any of the ways i keep
+  track of time
+
+- if using hardware timer (such as via Timer1 library), write to ensure no
+  interrupts can be missed (via previous interrupts going long, for example)
+  or detect missed interrupts somehow
+  - two timers checked against each other to detect?
+    if all timers block each other, probably couldn't work...
+
+- should always be interruptable from the host (if there is some error
+  detected host side)
+
+- probably avoid any dynamic memory stuff (and maybe some compiler tool to
+  verify there is none, that might be introduced by any libraries i might use?)
+  - or at least try to verify there are no memory (leak?) issues?
+
+ (low priority)
+- save programs to non-volatile memory and allow configuration
+  for initiation with a button on some pin?
+
+- support for hardware alarms (for communication / timing error / flow
+  controllers not reaching set point) / indicator LEDs / screen
+
+- if not using something like firmata, ideally would be written in such a way
+  that other code can be added (in as close to typical arduino boilerplate as
+  possible, while still maintaining some assurances / safe failure modes if
+  we detect we can't meet our timing demands because of other operations)
+
+- have hardware able to report its firmware version (some utility to compile it
+  in + upload?)
+
+
+nice to have but harder / less important:
+- ideally, capable of near real time operation
+
+- as little install required as possible (just going to website and uploading to
+  arduino from there + configuring in same site possible?)
+
+- maybe support pulsepal-style serial inputs, as a means of achieving bonsai
+  support?
+  - though neither, particular the former, probably matter much...
+

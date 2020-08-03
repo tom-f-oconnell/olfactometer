@@ -1,0 +1,13 @@
+
+- compare message / code size (if even available) / deserialization time of:
+  - protobuf (using nanopb, probably)
+  - msgpack
+  - flatbuffers
+  - capnproto
+  - the json library will uses
+  - ROS? (only if it seems clear how to just use their serialization /
+    deserialization stuff, without commiting too much else to the ecosystem,
+    particularly on the uC code size front...)
+  - python struct? maybe defeats the purpose...
+  - are there any libraries that support small types like python struct can?
+
