@@ -1,2 +1,8 @@
-#protobuf
-#grpcio-tools
+
+# For nanopb
+protobuf
+grpcio-tools
+
+pyserial
+gitpython
+

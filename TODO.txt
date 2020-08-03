@@ -11,3 +11,12 @@
   - python struct? maybe defeats the purpose...
   - are there any libraries that support small types like python struct can?
 
+- write scripts that can be used with another arduino / DAQ board to verify that
+  parts of this are working, such as:
+  - arduino script that detects which pins are high (connect pins 1:1) and
+    reports
+  - script that interprets DAQ signals to measure timing and check
+  
+- add something to do all install steps on clone?
+  + do i need to also clone that submodule? probably, right?
+

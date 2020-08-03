@@ -1,0 +1,46 @@
+
+syntax = 'proto3';
+
+// Not including any representation of default pin states for now. Assuming
+// everything defaults to LOW, for simplicity.
+
+// And while I might want to implement in a way that lets people change the
+// pulse length and stuff on the fly later, now I'll also make the assumption
+// that all pulses are the same length, with equal timing.
+
+message PulseTiming {
+    uint32 pre_pulse_us = 1;
+    uint32 pulse_us = 2;
+    uint32 post_pulse_us = 3;
+    // TODO cf w/ PulseControl implementation below
+    //optional bool follow_hardware_timing = 4;
+}
+
+// TODO cf this implementation w/ just uncommenting the follow_hardware_timing
+// line above...
+message PulseControl {
+    oneof control {
+        bool follow_hardware_timing = 1;
+        PulseTiming timing = 2;
+    }
+}
+
+// TODO the way i end up sending these, is there a risk of missing?
+// if so, maybe add a field just for the sequence number (to be checked on
+// arduino side)?
+message PinSequence {
+    // TODO is it invalid if this is length 0? (hopefully, otherwise prob need
+    // to do my own validation) (the spec allows 0)
+    // TODO maybe i should have another field with the length then?
+    // (also so the arduino knows when it's done reading, or executing, if they
+    // come in one-by-one...)
+    repeated uint32 pins = 1;
+}
+
+// TODO maybe add messages for feedback from arduino?
+// ACKs? current state? version info / available pins? error state?
+// maybe an enum to represent current state (READY/BUSY/ERROR[/PAUSED])?
+
+// TODO something to represent delays between PulseTiming(s) (~ trials)?
+// or not actually matter?
+

@@ -1,0 +1,7 @@
+
+// TODO what is the default if i didn't manually set this? does setting this
+// change some of the generated fns (particularly, whether callbacks are
+// needed)?
+// TODO is this in repeats of bytes / something else?
+PinSequence.pins max_size:128
+
