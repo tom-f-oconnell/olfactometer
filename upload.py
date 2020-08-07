@@ -4,6 +4,7 @@ from subprocess import Popen
 from os.path import join, splitext, exists, abspath
 import glob
 import shutil
+import argparse
 
 
 sketch_dir = 'firmware/olfactometer'
@@ -29,7 +30,7 @@ def generate_and_move_protobuf_code():
         shutil.move(f, dest)
 
 
-def upload(board='arduino:avr:mega', port='/dev/ttyACM0'):
+def upload(board='arduino:avr:mega', port='/dev/ttyACM0', dry_run=False):
     # This does need to be absolute
     build_path = abspath('build')
     if exists(build_path):
@@ -41,27 +42,40 @@ def upload(board='arduino:avr:mega', port='/dev/ttyACM0'):
     if exists(build_cache_path):
         shutil.rmtree(build_cache_path)
 
-    cmd = (f'arduino-cli compile -b {board} -u -t -p {port} -v {sketch_dir} '
+    cmd = (f'arduino-cli compile -b {board} -v {sketch_dir} '
         f'--build-path {build_path} '
         '--build-properties compiler.c.extra_flags=-Inanopb '
         '--build-properties compiler.cpp.extra_flags=-Inanopb'
     )
+    upload_args = f' -u -t -p {port}'
+    if not dry_run:
+        cmd += upload_args
+
     print(cmd)
     # TODO parse output to check the -t flag indicated successful verification
     p = Popen(cmd, shell=True)
     p.communicate()
 
-    # TODO test these don't err if compilation errs (would compilation err raise
-    # anyway?)
-    shutil.rmtree(build_path)
-    shutil.rmtree(build_cache_path)
+    #'''
+    if exists(build_path):
+        shutil.rmtree(build_path)
+
+    if exists(build_cache_path):
+        shutil.rmtree(build_cache_path)
+    #'''
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--dry-run', action='store_true', default=False,
+        help='do not actually upload. just compile.'
+    )
+    args = parser.parse_args()
+    
     generate_and_move_protobuf_code()
     # TODO replace w/ passing appropriate options to arduino so it can use the
     # files in situ without having to copy them
-    upload()
+    upload(dry_run=args.dry_run)
 
 
 if __name__ == '__main__':

@@ -20,3 +20,8 @@
 - add something to do all install steps on clone?
   + do i need to also clone that submodule? probably, right?
 
+- test behavior of PinSeqeunce.pins max_size specified in olf.options is as
+  expected 
+
+- maybe i should test my C code on my host computer before trying to test it on
+  the arduino?
