@@ -1,6 +1,6 @@
 
 # For nanopb
-protobuf
+protobuf # 3.12.4 in initial development.
 grpcio-tools
 
 pyserial

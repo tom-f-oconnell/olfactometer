@@ -1,2 +1,4 @@
 *.pb.c
 *.pb.h
+# TODO is this always the suffix for generated python files?
+*_pb2.py

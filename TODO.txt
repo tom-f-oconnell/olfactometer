@@ -25,3 +25,7 @@
 
 - maybe i should test my C code on my host computer before trying to test it on
   the arduino?
+
+- (if using nanopb-arduino) is it a problem that pb_istream_s bytes_left is
+  defined as SIZE_MAX? no way to actually have it defined using Streams?
+  appropriate test case?
