@@ -18,7 +18,7 @@
 // TODO check this actually would be defined here w/ some other things we
 // expect to be enabled
 #ifdef PB_ENABLE_MALLOC
-#error I don't want malloc enabled.
+#error I do not want nanopb malloc enabled
 #endif
 
 uint8_t buffer[128];

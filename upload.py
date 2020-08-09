@@ -1,13 +1,37 @@
 #!/usr/bin/env python3
 
 from subprocess import Popen
-from os.path import join, splitext, exists, abspath
+import os
+from os.path import join, split, splitext, exists, abspath, realpath
 import glob
 import shutil
 import argparse
 
 
-sketch_dir = 'firmware/olfactometer'
+this_script_dir = split(abspath(realpath(__file__)))[0]
+sketch_dir = join(this_script_dir, 'firmware/olfactometer')
+nanopb_dir = join(this_script_dir, 'nanopb')
+arduino_lib_dir = join(split(sketch_dir)[0], 'libraries')
+
+
+def make_nanopb_arduino_library():
+    nanopb_lib_dir = join(arduino_lib_dir, 'Nanopb')
+    # exist_ok is a Python 3.2+ feature
+    os.makedirs(nanopb_lib_dir, exist_ok=True)
+    c_and_h_prefixes = ['pb_common', 'pb_encode', 'pb_decode']
+    files_to_link = ['pb.h'] + [
+        f + s for f in c_and_h_prefixes for s in ('.h','.c')
+    ]
+    for f in files_to_link:
+        dst = join(nanopb_lib_dir, f)
+        if not exists(dst):
+            src = join(nanopb_dir, f)
+            if not exists(src):
+                raise IOError(f'required nanopb file {src} not found. try "git '
+                    'submodule update --init" from project root?'
+                )
+            os.symlink(src, dst)
+
 
 def generate_and_move_protobuf_code():
     proto_files = glob.glob('*.proto')
@@ -18,7 +42,7 @@ def generate_and_move_protobuf_code():
     # TODO need to remove these in advance, or are they just overwritten anyway?
     generated_files = [prefix + s for s in ('h','c')]
 
-    p = Popen(f'python nanopb/generator/nanopb_generator.py {proto_file}',
+    p = Popen(f'python {nanopb_dir}/generator/nanopb_generator.py {proto_file}',
         shell=True
     )
     p.communicate()
@@ -32,20 +56,18 @@ def generate_and_move_protobuf_code():
 
 def upload(board='arduino:avr:mega', port='/dev/ttyACM0', dry_run=False):
     # This does need to be absolute
-    build_path = abspath('build')
+    build_path = abspath(join(this_script_dir, 'build'))
     if exists(build_path):
         shutil.rmtree(build_path)
 
-    # This seems to be the --build-cache-path from "arduino compile --help"
-    # (this is just the default. could pass it to make it explicit...)
+    # This is also the default, for me.
     build_cache_path = join(sketch_dir, 'build')
     if exists(build_cache_path):
         shutil.rmtree(build_cache_path)
 
     cmd = (f'arduino-cli compile -b {board} -v {sketch_dir} '
-        f'--build-path {build_path} '
-        '--build-properties compiler.c.extra_flags=-Inanopb '
-        '--build-properties compiler.cpp.extra_flags=-Inanopb'
+        f'--libraries {arduino_lib_dir} '
+        f'--build-path {build_path} --build-cache-path {build_cache_path} '
     )
     upload_args = f' -u -t -p {port}'
     if not dry_run:
@@ -56,13 +78,11 @@ def upload(board='arduino:avr:mega', port='/dev/ttyACM0', dry_run=False):
     p = Popen(cmd, shell=True)
     p.communicate()
 
-    #'''
     if exists(build_path):
         shutil.rmtree(build_path)
 
     if exists(build_cache_path):
         shutil.rmtree(build_cache_path)
-    #'''
 
 
 def main():
@@ -72,6 +92,7 @@ def main():
     )
     args = parser.parse_args()
     
+    make_nanopb_arduino_library()
     generate_and_move_protobuf_code()
     # TODO replace w/ passing appropriate options to arduino so it can use the
     # files in situ without having to copy them
