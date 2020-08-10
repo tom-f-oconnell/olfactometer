@@ -158,7 +158,7 @@ const uint8_t external_timing_interrupt = digitalPinToInterrupt(
 // TODO maybe negate this in the variable name so it can effectively default
 // true?
 bool enable_timing_output = false;
-const uint8_t timing_output_pin = 13;
+const uint8_t timing_output_pin = 3;
 
 // TODO TODO also add an optional pin to signal the pin thats getting switched
 // (as before)
@@ -246,8 +246,12 @@ void setup() {
     // case it's (for example) the timing_output_pin
     // TODO make this hardware target specific if others dont have that behavior
     // Just setting it to an INPUT didn't seem sufficient...
+    // Still seems to blink a bit on serial connection initiation... avoidable?
+    // TODO use different pin if it really matters
+    /*
     pinMode(13, OUTPUT);
     digitalWrite(13, LOW);
+    */
 
     // Other candidate rates: 38400, 57600, 115200 (max)
     Serial.begin(115200);
@@ -372,7 +376,11 @@ void setup() {
     #ifdef DEBUG_PRINTS
     Serial.println("end of setup");
     #endif
+    // for testing ISR with just one arduino (connect 3<->external_timing_pin)
+    /*
+    delay(3000);
     pinMode(3, OUTPUT);
+    */
 }
 
 int last_isr_count = -1;
@@ -395,13 +403,19 @@ void loop() {
         Serial.println();
         last_isr_count = isr_count;
     }
+    // TODO maybe wait until next high transition / python closing serial
+    // connection? or just stay low? (cause pin 13 flashes in boot loader, so
+    // it'll flash in the end of the last trial...)
     if (pin_seq_idx == pin_seq.pins_count) {
         Serial.println("finished");
         software_reset();
     }
+    // for testing ISR with just one arduino (connect 3<->external_timing_pin)
+    /*
     digitalWrite(3, HIGH);
-    delay(500);
-    digitalWrite(3, LOW);
     delay(2000);
+    digitalWrite(3, LOW);
+    delay(4000);
+    */
 }
 
