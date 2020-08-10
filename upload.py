@@ -8,6 +8,9 @@ import shutil
 import argparse
 
 
+# TODO TODO force arduino code to be committed before upload, and embed commit
+# hash in arduino code somehow
+
 this_script_dir = split(abspath(realpath(__file__)))[0]
 sketch_dir = join(this_script_dir, 'firmware/olfactometer')
 nanopb_dir = join(this_script_dir, 'nanopb')
@@ -58,6 +61,7 @@ def generate_and_move_protobuf_code():
     # TODO need to remove these in advance, or are they just overwritten anyway?
     generated_files = [prefix + s for s in ('h','c')]
 
+    # TODO also check exit status of this one and fail if need be. test.
     p = Popen(f'python {nanopb_dir}/generator/nanopb_generator.py {proto_file}',
         shell=True
     )
@@ -94,6 +98,17 @@ def upload(board='arduino:avr:mega', port='/dev/ttyACM0', dry_run=False,
     if not dry_run:
         cmd += upload_args
 
+        # TODO i managed to get the same "...Device or resource busy
+        # ioctl("TIOCMGET"): Inappropriate ioctl for device" error when i just
+        # plugged the arduino in here...
+
+        # This is because arduino-cli hangs for a while (maybe indefinitely?)
+        # if it does not exist.
+        if not exists(port):
+            raise IOError(f'port {port} does not exist. '
+                'is the Arduino connected?'
+            )
+
     print(cmd)
 
     # TODO add error handling for case when arduino was just plugged in and we
@@ -113,8 +128,19 @@ def upload(board='arduino:avr:mega', port='/dev/ttyACM0', dry_run=False,
     if exists(build_cache_path):
         shutil.rmtree(build_cache_path)
 
+    # This p.returncode is set by p.communicate() above.
+    failure = bool(p.returncode)
+    if failure:
+        raise RuntimeError('compilation or upload failed')
 
-def main():
+
+def main(dry_run=False, verbose=False, clear_libraries=False):
+    make_arduino_libraries(delete_existing=clear_libraries)
+    generate_and_move_protobuf_code()
+    upload(dry_run=dry_run, verbose=verbose)
+
+
+if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--dry-run', action='store_true', default=False,
         help='do not actually upload. just compile.'
@@ -126,14 +152,8 @@ def main():
         default=False, help='delete and re-create libraries'
     )
     args = parser.parse_args()
-    
-    make_arduino_libraries(delete_existing=args.clear_libraries)
-    generate_and_move_protobuf_code()
-    # TODO replace w/ passing appropriate options to arduino so it can use the
-    # files in situ without having to copy them
-    upload(dry_run=args.dry_run, verbose=args.verbose)
 
-
-if __name__ == '__main__':
-    main()
+    main(dry_run=args.dry_run, verbose=args.verbose,
+        clear_libraries=args.clear_libraries
+    )
 

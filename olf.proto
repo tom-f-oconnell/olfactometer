@@ -8,6 +8,9 @@ syntax = 'proto3';
 // pulse length and stuff on the fly later, now I'll also make the assumption
 // that all pulses are the same length, with equal timing.
 
+// TODO some message to just tell it to replay the currently loaded sequence?
+// (assuming there is one)
+
 message PulseTiming {
     uint32 pre_pulse_us = 1;
     uint32 pulse_us = 2;
@@ -16,13 +19,31 @@ message PulseTiming {
     //optional bool follow_hardware_timing = 4;
 }
 
+// TODO maybe also pass expected pulse sizes + tolerances in here, so they can
+// be measured and the arduino can err if there is a mismatch?
+// could implment arbitrary trigger pin like this
+// (and just go into err state if digitalPinToInterrupt returns -1)
+/*
+message Trigger {
+    uint32 pin_to_follow = 1;
+}
+*/
+
 // TODO cf this implementation w/ just uncommenting the follow_hardware_timing
 // line above...
-message PulseControl {
+message Settings {
     oneof control {
+        // TODO maybe replace this with another message that also includes
+        // parameters for debouncing / denoising the digital input?
+        // (if noise on that line actually seems like an issue)
         bool follow_hardware_timing = 1;
         PulseTiming timing = 2;
     }
+    bool enable_timing_output = 3;
+    // would need at least --experimental_allow_proto3_optional, and not sure
+    // that would work + w/ nanopb
+    //optional bool no_ack = 4;
+    bool no_ack = 4;
 }
 
 // TODO the way i end up sending these, is there a risk of missing?

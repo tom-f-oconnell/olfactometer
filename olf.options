@@ -1,7 +1,18 @@
 
-// TODO what is the default if i didn't manually set this? does setting this
-// change some of the generated fns (particularly, whether callbacks are
-// needed)?
-// TODO is this in repeats of bytes / something else?
-PinSequence.pins max_size:128
+# With this settings, the pins will be decoded into a fixed length array by
+# default, rather than needing a callback defined.
+# TODO maybe up to ~256?
+PinSequence.pins max_count:128
+
+# From source: "int_size setting will override the number of bits, but keep the
+# type otherwise. E.g. uint32 + IS_8 => uint8_t"
+PinSequence.pins int_size:IS_8
+
+# Seems to be a static array without this as well, and I'm not sure I have a
+# representation of how many pins are actually supposed to be in the sequence
+# if this is set, so not using for now.
+#PinSequence.pins fixed_count:true
+
+# TODO look in to msgid if useful for picking one of two requests that might
+# arrive at a particular time (status request vs pin sequence, maybe?)
 
