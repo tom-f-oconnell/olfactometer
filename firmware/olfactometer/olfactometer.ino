@@ -1,10 +1,19 @@
 // Author: Tom O'Connell <tom.oconn3ll@gmail.com>
 
+// TODO TODO figure out how we can get python to insert something compile time
+// preprocessor macro defined w/ compiler flag? (for git hash)
+
+// TODO TODO use similar technique maybe to assign specific pins? and have a
+// mapping of hardware targets to pin assignments (for things like interrupt
+// pins and balance_pin, etc)
+// TODO TODO or even specific physical olfactometers, as the construction
+// varies...
+
 #define USE_MESSAGE_NUMS
 
 // TODO maybe have these enable-able at runtime, in initial configuration
 // messages? (i.e. not using the preprocessor)
-#define DEBUG_PRINTS
+//#define DEBUG_PRINTS
 
 #include <avr/wdt.h>
 
@@ -144,9 +153,14 @@ PinSequence pin_seq = PinSequence_init_zero;
 // might want to be able to query reserved pins anyway, unless it's always just
 // {0,1} across all hardware targets (which are required for Serial)
 bool follow_hardware_timing = false;
-const uint8_t external_timing_pin = 2;
-// TODO what is appropriate type for this?
-// TODO const allowed for output of function call?
+
+// This seems to be one of the availble interrupt pins on the Mega
+// TODO same type of interrupt as we could achieve on 2/3 though?
+const uint8_t external_timing_pin = 20;
+
+// TODO what is appropriate type for this? (this seems to work, but maybe some
+// would be out of bounds? (for some pins on some targets) maybe use larger?
+// TODO const allowed for output of function call? (seems so)
 const uint8_t external_timing_interrupt = digitalPinToInterrupt(
   external_timing_pin
 );
@@ -158,7 +172,13 @@ const uint8_t external_timing_interrupt = digitalPinToInterrupt(
 // TODO maybe negate this in the variable name so it can effectively default
 // true?
 bool enable_timing_output = false;
-const uint8_t timing_output_pin = 3;
+const uint8_t timing_output_pin = 21;
+
+
+// TODO definitely enable configuration of this on the host side (at runtime).
+// also enable it being high or low by default.
+// TODO TODO also allow disabling this though
+const uint8_t balance_pin = 31;
 
 // TODO TODO also add an optional pin to signal the pin thats getting switched
 // (as before)
@@ -166,6 +186,10 @@ const uint8_t timing_output_pin = 3;
 uint8_t reserved_pins[] = {0, 1};
 
 bool pin_is_reserved(uint8_t pin) {
+    // TODO support disabling balance pin though...
+    if (pin == balance_pin) {
+        return true;
+    }
     if (follow_hardware_timing && pin == external_timing_pin) {
         return true;
     }
@@ -186,9 +210,7 @@ volatile bool isr_err = false;
 // Expecting the first CHANGE on external_timing_pin to be RISING.
 volatile bool last_state = LOW;
 
-#ifdef DEBUG_PRINTS
 volatile uint8_t isr_count = 0;
-#endif
 
 // TODO maybe time this function to see if it's a reasonable length?
 void external_timing_isr() {
@@ -204,9 +226,7 @@ void external_timing_isr() {
     // themselves and enable the other, as described here:
     // https://stackoverflow.com/questions/33380218
 
-    #ifdef DEBUG_PRINTS
     isr_count++;
-    #endif
 
     // TODO is this equivalent to keeping counts of # rising edges and # of
     // falling edges and comparing those? maybe do that instead?
@@ -216,6 +236,8 @@ void external_timing_isr() {
         return;
     }
     digitalWrite(pin_seq.pins[pin_seq_idx], curr_state);
+    // TODO support disabling this! / changing default state
+    digitalWrite(balance_pin, curr_state);
     if (enable_timing_output) {
         digitalWrite(timing_output_pin, curr_state);
     }
@@ -384,23 +406,31 @@ void setup() {
 }
 
 int last_isr_count = -1;
+uint8_t pin;
 void loop() {
     if (isr_err) {
         Serial.println("ISR error!");
         software_reset();
     }
     if (last_isr_count < isr_count) {
+        pin = pin_seq.pins[pin_seq_idx];
+        if (isr_count % 2 == 1) {
+          Serial.print("trial: ");
+          Serial.print(isr_count / 2 + 1);
+          Serial.print(", pin: ");
+          Serial.println(pin);
+        }
+        #ifdef DEBUG_PRINTS
         Serial.print("pin_seq_idx: ");
         Serial.println(pin_seq_idx);
         Serial.print("pin_seq.pins[pin_seq_idx]: ");
-        Serial.println(pin_seq.pins[pin_seq_idx]);
-        #ifdef DEBUG_PRINTS
+        Serial.println(pin);
         Serial.print("isr_count: ");
         Serial.println(isr_count);
         Serial.print("last_state: ");
         Serial.println(last_state);
-        #endif
         Serial.println();
+        #endif
         last_isr_count = isr_count;
     }
     // TODO maybe wait until next high transition / python closing serial

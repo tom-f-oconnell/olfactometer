@@ -253,7 +253,7 @@ def main():
         upload.main(port=port)
 
     ignore_ack = args.ignore_ack
-    verbose = True
+    verbose = False
     baud_rate = parse_baud_from_sketch()
     print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
     with serial.Serial(port, baud_rate, timeout=0.1) as ser:
@@ -302,7 +302,10 @@ def main():
         # https://stackoverflow.com/questions/23726335
         #pin_sequence.pins.extend([4, 5, 6, 7, 8, 9, 10, 11, 12])
         #pin_sequence.pins.extend([4, 5])
-        pin_sequence.pins.extend([4])
+        #pin_sequence.pins.extend([4])
+        pin_sequence.pins.extend([2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,7,7,7,8,8,8,
+            9,9,9,10,10,10,11,11,11
+        ])
 
         write_message(ser, pin_sequence, ignore_ack=ignore_ack, verbose=verbose)
 

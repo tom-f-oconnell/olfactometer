@@ -41,3 +41,42 @@
   - (after making and activating virtualenv) pip install --upgrade pip
     (or else some of stuff in requirements.txt doesn't build)
 
+- in 16.04, after installing python3.6 from deadsnakes repo, also needed to
+  install python3.6-venv to not have the ensurepip error (pip was already
+  installed)
+
+  - need to download protobuf source from here:
+    https://github.com/protocolbuffers/protobuf/archive/v3.0.0.tar.gz
+
+    ... and compile, to have same version as installed with apt on 18.04
+
+    See: https://askubuntu.com/questions/1072683
+
+    Needed to modify above askubuntu instructions by following jalajc's comment
+    here: https://github.com/samjabrahams/tensorflow-on-raspberry-pi/issues/42
+    (I just manually ran them inside protobuf source root)
+
+    Then I needed to do ./autogen.sh before ./configure existed.
+
+    TODO TODO TODO fix errors / warnings that caused: make check
+    to fail in protobuf 3.0.0 build!
+
+    TODO also run nanopb tests and see if those work!
+
+    The version that apt installs in 16.04 doesn't support version 3 of the
+    protocol (the version I use).
+
+
+- implement some stuff to assist manual testing
+  - pulse valve at a configurable duty cycle / on off pulse widths until
+    manually advanced? or switch between them (all avail pins) at some
+    configurable rate?
+
+  - if getting input from flow meters, and the valves can be switched so that no
+    flow is allowed through one of the flow meters, could probably read the flow
+    as a test and switch valves individually to check they allow flow
+
+    - this + knowing pins are all driving different valves seems like a pretty
+      good guarantee everything is wired correctly + the valves are working
+
+- !!! add ability to restart from wherever, in case something went wrong!
