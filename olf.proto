@@ -11,6 +11,10 @@ syntax = 'proto3';
 // TODO some message to just tell it to replay the currently loaded sequence?
 // (assuming there is one)
 
+// TODO should i add a "start" command, when PulseTiming is specified?
+// (to maybe reduce variation depending on how long communication /
+// deserialization of stuff takes on different targets?)
+
 message PulseTiming {
     uint32 pre_pulse_us = 1;
     uint32 pulse_us = 2;
@@ -46,9 +50,8 @@ message Settings {
     bool no_ack = 4;
 }
 
-// TODO the way i end up sending these, is there a risk of missing?
-// if so, maybe add a field just for the sequence number (to be checked on
-// arduino side)?
+// TODO TODO TODO change implementation so multiple valves can be triggered at
+// once!
 message PinSequence {
     // TODO is it invalid if this is length 0? (hopefully, otherwise prob need
     // to do my own validation) (the spec allows 0)
@@ -61,6 +64,7 @@ message PinSequence {
 // TODO maybe add messages for feedback from arduino?
 // ACKs? current state? version info / available pins? error state?
 // maybe an enum to represent current state (READY/BUSY/ERROR[/PAUSED])?
+// (currently doing the ACKs outside protobuf, just like the CRC)
 
 // TODO something to represent delays between PulseTiming(s) (~ trials)?
 // or not actually matter?
