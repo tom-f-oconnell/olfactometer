@@ -7,6 +7,10 @@
 # subdir it creates on your path.
 #curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
 
+# At least in a fresh Windows Subsystem for Linux (WSL) Ubuntu 18.04,
+# this line seemed necessary before proceeding:
+# arduino-cli core update-index
+
 arduino-cli core install arduino:avr
 
 

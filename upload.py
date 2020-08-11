@@ -134,7 +134,9 @@ def upload(board='arduino:avr:mega', port='/dev/ttyACM0', dry_run=False,
         raise RuntimeError('compilation or upload failed')
 
 
-def main(dry_run=False, verbose=False, clear_libraries=False):
+def main(port='/dev/ttyACM0', dry_run=False, verbose=False,
+    clear_libraries=False):
+
     make_arduino_libraries(delete_existing=clear_libraries)
     generate_and_move_protobuf_code()
     upload(dry_run=dry_run, verbose=verbose)
@@ -142,6 +144,9 @@ def main(dry_run=False, verbose=False, clear_libraries=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
+        help='Port the Arduino is connected to.'
+    )
     parser.add_argument('-d', '--dry-run', action='store_true', default=False,
         help='do not actually upload. just compile.'
     )
@@ -153,7 +158,7 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    main(dry_run=args.dry_run, verbose=args.verbose,
+    main(port=args.port, dry_run=args.dry_run, verbose=args.verbose,
         clear_libraries=args.clear_libraries
     )
 

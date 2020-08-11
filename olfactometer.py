@@ -223,6 +223,12 @@ def main():
     parser.add_argument('-u', '--upload', action='store_true', default=False,
         help='also uploads Arduino code before running'
     )
+    # TODO just detect? or still have this as an option? maybe have on default,
+    # and detect by default?
+    parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
+        help='Port the Arduino is connected to. '
+        'For uploading and communication.'
+    )
     # TODO maybe add arduino config parameter to ask the arduino not to send
     # msgnum acks in this case? (which would clutter the output)
     parser.add_argument('-i', '--ignore-ack', action='store_true',
@@ -232,6 +238,7 @@ def main():
     )
     args = parser.parse_args()
 
+    port = args.port
     if args.upload:
         # TODO save file modification time at upload and check if it has changed
         # before re-uploading with this flag... (just to save program memory
@@ -243,13 +250,13 @@ def main():
 
         # This raises a RuntimeError if the compilation / upload returns a
         # non-zero exit status, stopping further steps here, as intended.
-        upload.main()
+        upload.main(port=port)
 
     ignore_ack = args.ignore_ack
     verbose = True
     baud_rate = parse_baud_from_sketch()
     print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
-    with serial.Serial('/dev/ttyACM0', baud_rate, timeout=0.1) as ser:
+    with serial.Serial(port, baud_rate, timeout=0.1) as ser:
         # TODO how to write in such a way that we don't need this sleep?
         # any alternative besides having arduino write something?
         # Tried 0.75 and lower but none of those seemed to have any bytes

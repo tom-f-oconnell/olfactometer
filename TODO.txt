@@ -29,3 +29,15 @@
 - (if using nanopb-arduino) is it a problem that pb_istream_s bytes_left is
   defined as SIZE_MAX? no way to actually have it defined using Streams?
   appropriate test case?
+
+- add windows steps to install instructions. and are they the same as would
+  be needed on a fresh 18.04 anyway? (seems we start in dialout in WSL, so
+  steps aren't exactly the same...)
+  - clone this repo and (at same level) my nanopb-arduino fork
+  - git submodule update --init (in this repo top-level)
+  - sudo apt install python3-pip
+  - sudo apt install python3-venv
+  - sudo apt install protobuf-compiler
+  - (after making and activating virtualenv) pip install --upgrade pip
+    (or else some of stuff in requirements.txt doesn't build)
+
