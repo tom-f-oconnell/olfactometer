@@ -1,3 +1,6 @@
 [submodule "nanopb"]
 	path = nanopb
 	url = https://github.com/nanopb/nanopb
+[submodule "nanopb-arduino"]
+	path = nanopb-arduino
+	url = https://github.com/tom-f-oconnell/nanopb-arduino

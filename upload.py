@@ -40,7 +40,7 @@ def make_arduino_libraries(delete_existing=False):
             os.symlink(src, dst)
 
     nanopb_arduino_src_dir = abspath(
-        join(this_script_dir, '..', 'nanopb-arduino', 'src')
+        join(this_script_dir, 'nanopb-arduino', 'src')
     )
     nanopb_arduino_lib_dir = join(arduino_lib_dir, 'nanopb-arduino')
     os.makedirs(nanopb_arduino_lib_dir, exist_ok=True)
