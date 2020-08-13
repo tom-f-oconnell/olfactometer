@@ -18,12 +18,12 @@ from google.protobuf.internal.encoder import _VarintBytes
 import upload
 
 in_docker = 'OLFACTOMETER_IN_DOCKER' in os.environ
+this_script_dir = split(__file__)[0]
 # The build process handles this in the Docker case. If the code would changes
 # (which can only happen through a build) it would trigger protoc compilation as
 # part of the build.
 if not in_docker:
     # TODO only do this if proto_file has changed since the python outputs have
-    this_script_dir = split(__file__)[0]
     proto_file = join(this_script_dir, 'olf.proto')
     p = subprocess.Popen(
         ['protoc', f'--python_out={this_script_dir}', proto_file]
