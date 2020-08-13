@@ -13,7 +13,7 @@
 
 // TODO maybe have these enable-able at runtime, in initial configuration
 // messages? (i.e. not using the preprocessor)
-//#define DEBUG_PRINTS
+#define DEBUG_PRINTS
 
 #include <avr/wdt.h>
 

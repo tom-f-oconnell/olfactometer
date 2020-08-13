@@ -17,20 +17,48 @@ from google.protobuf.internal.encoder import _VarintBytes
 # TODO need to change syntax so this script is runnable from wherever? or no?
 import upload
 
-# TODO only do this if proto_file has changed since the python outputs have...
-this_script_dir = split(__file__)[0]
-proto_file = join(this_script_dir, 'olf.proto')
-p = subprocess.Popen(['protoc', f'--python_out={this_script_dir}', proto_file])
-p.communicate()
-failure = bool(p.returncode)
-if failure:
-    raise RuntimeError(f'generating python code from {proto_file} failed')
+in_docker = 'OLFACTOMETER_IN_DOCKER' in os.environ
+# The build process handles this in the Docker case. If the code would changes
+# (which can only happen through a build) it would trigger protoc compilation as
+# part of the build.
+if not in_docker:
+    # TODO only do this if proto_file has changed since the python outputs have
+    this_script_dir = split(__file__)[0]
+    proto_file = join(this_script_dir, 'olf.proto')
+    p = subprocess.Popen(
+        ['protoc', f'--python_out={this_script_dir}', proto_file]
+    )
+    p.communicate()
+    failure = bool(p.returncode)
+    if failure:
+        raise RuntimeError(f'generating python code from {proto_file} failed')
 
 # TODO is pb2 suffix indication i'm not using the version i want?
 # syntax was version 3, and the generated code seems to acknowledge that...
 
 # Importing this after regenerating Python code with subprocess above.
 import olf_pb2
+
+
+if in_docker:
+    # TODO TODO TODO does this bode poorly for latency of pyserial communication
+    # / need to flush that? (ultimately test docker deployment [perhaps also
+    # including specifically on windows, if that even works with pyserial] with
+    # hardware recording the outputs to verify the timing in software)
+    # TODO one test might be serial writing something to arduino which should
+    # trigger a led change, immediately followed by time.sleep, and see if the
+    # LED change happens any more reliably / with lower latency without docker.
+    # need a read test too though, + better tests.
+    # TODO TODO maybe also flush after each serial read / write here, or
+    # change some of the other pyserial settings?
+    # TODO some less hacky fix for print?
+    _builtin_print = print
+    def flush_print(*args, **kwargs):
+        # Ignoring any passed values
+        if 'flush' in kwargs:
+            del kwargs['flush']
+        _builtin_print(*args, flush=True, **kwargs)
+    print = flush_print
 
 
 def parse_baud_from_sketch():
@@ -226,9 +254,10 @@ def main():
     # TODO just detect? or still have this as an option? maybe have on default,
     # and detect by default?
     parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
-        help='Port the Arduino is connected to. '
+        help='port the Arduino is connected to. '
         'For uploading and communication.'
     )
+    parser.add_argument('-v', '--verbose', action='store_true', default=False)
     # TODO maybe add arduino config parameter to ask the arduino not to send
     # msgnum acks in this case? (which would clutter the output)
     parser.add_argument('-i', '--ignore-ack', action='store_true',
@@ -253,10 +282,11 @@ def main():
         upload.main(port=port)
 
     ignore_ack = args.ignore_ack
-    verbose = False
+    verbose = args.verbose
     baud_rate = parse_baud_from_sketch()
     print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
     with serial.Serial(port, baud_rate, timeout=0.1) as ser:
+        print('Connected')
         # TODO how to write in such a way that we don't need this sleep?
         # any alternative besides having arduino write something?
         # Tried 0.75 and lower but none of those seemed to have any bytes
@@ -309,6 +339,10 @@ def main():
 
         write_message(ser, pin_sequence, ignore_ack=ignore_ack, verbose=verbose)
 
+        if settings.follow_hardware_timing:
+            print('Ready')
+        else:
+            print('Starting')
 
         while True:
             line = ser.readline()

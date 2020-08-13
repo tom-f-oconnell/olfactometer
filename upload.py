@@ -145,7 +145,7 @@ def main(port='/dev/ttyACM0', dry_run=False, verbose=False,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
-        help='Port the Arduino is connected to.'
+        help='port the Arduino is connected to.'
     )
     parser.add_argument('-d', '--dry-run', action='store_true', default=False,
         help='do not actually upload. just compile.'

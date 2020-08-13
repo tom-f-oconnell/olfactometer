@@ -1,16 +1,4 @@
 
-- compare message / code size (if even available) / deserialization time of:
-  - protobuf (using nanopb, probably)
-  - msgpack
-  - flatbuffers
-  - capnproto
-  - the json library will uses
-  - ROS? (only if it seems clear how to just use their serialization /
-    deserialization stuff, without commiting too much else to the ecosystem,
-    particularly on the uC code size front...)
-  - python struct? maybe defeats the purpose...
-  - are there any libraries that support small types like python struct can?
-
 - write scripts that can be used with another arduino / DAQ board to verify that
   parts of this are working, such as:
   - arduino script that detects which pins are high (connect pins 1:1) and
@@ -20,11 +8,7 @@
 - add something to do all install steps on clone?
   + do i need to also clone that submodule? probably, right?
 
-- test behavior of PinSeqeunce.pins max_size specified in olf.options is as
-  expected 
-
-- maybe i should test my C code on my host computer before trying to test it on
-  the arduino?
+- arduino emulation for on-host integration tests?
 
 - add windows steps to install instructions. and are they the same as would
   be needed on a fresh 18.04 anyway? (seems we start in dialout in WSL, so
@@ -61,7 +45,6 @@
     The version that apt installs in 16.04 doesn't support version 3 of the
     protocol (the version I use).
 
-
 - implement some stuff to assist manual testing
   - pulse valve at a configurable duty cycle / on off pulse widths until
     manually advanced? or switch between them (all avail pins) at some
@@ -75,3 +58,16 @@
       good guarantee everything is wired correctly + the valves are working
 
 - !!! add ability to restart from wherever, in case something went wrong!
+
+- compare message / code size (if even available) / deserialization time of:
+  - protobuf (using nanopb, probably)
+  - msgpack
+  - flatbuffers
+  - capnproto
+  - the json library will uses
+  - ROS? (only if it seems clear how to just use their serialization /
+    deserialization stuff, without commiting too much else to the ecosystem,
+    particularly on the uC code size front...)
+  - python struct? maybe defeats the purpose...
+  - are there any libraries that support small types like python struct can?
+

@@ -1,0 +1,20 @@
+Dockerfile
+
+# This syntax seems necessary (as opposed to simply *.md) to also apply to
+# files in subdirectories.
+**/*.md
+
+# All hidden files / folders.
+**/.*
+
+# Can't exclude all *.txt files because we want requirements.txt files
+TODO.txt
+wishlist.txt
+nanopb/**/*.txt
+
+nanopb/docs/
+nanopb/examples/
+nanopb/tools/
+
+nanopb-arduino/library.json
+
