@@ -9,11 +9,15 @@
 // TODO TODO or even specific physical olfactometers, as the construction
 // varies...
 
+// TODO maybe just use EEPROM for the above data though, and pass it through
+// protobuf at init time (no-op if already set?)?
+
 #define USE_MESSAGE_NUMS
 
-// TODO maybe have these enable-able at runtime, in initial configuration
-// messages? (i.e. not using the preprocessor)
-#define DEBUG_PRINTS
+// NOTE: DEBUG_PRINTS is defined in ./upload.py and ./olfactometer.py if you
+// pass the -g (--arduino-debug-prints) option. Uncomment this if you would like
+// to enable debug prints, compiling yourself with some other build system.
+//#define DEBUG_PRINTS
 
 #include <avr/wdt.h>
 

@@ -61,6 +61,20 @@ message PinSequence {
     repeated uint32 pins = 1;
 }
 
+// NOTE: this is only defined so we can let the Python protobuf library handle
+// serialization / deserialization of multiple messages, without myself
+// specifying how multiple JSON serializations should be combined / parsed into
+// their respective message types.
+// TODO TODO maybe this just means i should use a similar object for sending it
+// all in one call to the Arduino? i'm not sure i have a great justification for
+// current division...
+message AllRequiredData {
+    Settings settings = 1;
+    PinSequence pin_sequence = 2;
+}
+
+// TODO try using gRPC to implement starting of pulse train?
+
 // TODO maybe add messages for feedback from arduino?
 // ACKs? current state? version info / available pins? error state?
 // maybe an enum to represent current state (READY/BUSY/ERROR[/PAUSED])?

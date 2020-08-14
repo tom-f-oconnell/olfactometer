@@ -13,18 +13,21 @@ import subprocess
 
 import serial
 from google.protobuf.internal.encoder import _VarintBytes
+from google.protobuf import json_format #import MessageToDict, ParseDict
+import yaml
 
 # TODO need to change syntax so this script is runnable from wherever? or no?
 import upload
 
 in_docker = 'OLFACTOMETER_IN_DOCKER' in os.environ
 this_script_dir = split(__file__)[0]
+project_root = split(this_script_dir)[0]
 # The build process handles this in the Docker case. If the code would changes
 # (which can only happen through a build) it would trigger protoc compilation as
 # part of the build.
 if not in_docker:
     # TODO only do this if proto_file has changed since the python outputs have
-    proto_file = join(this_script_dir, 'olf.proto')
+    proto_file = join(project_root, 'olf.proto')
     p = subprocess.Popen(
         ['protoc', f'--python_out={this_script_dir}', proto_file]
     )
@@ -62,7 +65,7 @@ if in_docker:
 
 
 def parse_baud_from_sketch():
-    sketch = join(this_script_dir, 'firmware', 'olfactometer',
+    sketch = join(project_root, 'firmware', 'olfactometer',
         'olfactometer.ino'
     )
     with open(sketch, 'r') as f:
@@ -90,6 +93,51 @@ def parse_baud_from_sketch():
     assert len(parts) == 2
     baud_rate = int(parts[0])
     return baud_rate
+
+
+def load_json(json_filelike, message=None):
+    if message is None:
+        message = olf_pb2.AllRequiredData()
+    # TODO does this need to be str instead of a filelike?
+    json_format.Parse(json_filelike, message)
+    return message
+
+
+def load_yaml(yaml_filelike, message=None):
+    if message is None:
+        message = olf_pb2.AllRequiredData()
+
+    # TODO safe_load accept str / filelike or both?
+    # TODO do we actually need any of the yaml 1.2(+?) features
+    # available in ruamel.yaml but not in PyYAML (1.1 only)?
+    json_format.ParseDict(yaml.safe_load(yaml_filelike), message)
+
+    return message
+
+
+# TODO implement a bunch of round trip tests of different types of messages,
+# between all three formats (maybe just YAML <-> olf_pb2 message though, as that
+# includes JSON in the middle?)
+def load(json_or_yaml):
+    """Parses JSON or YAML file into an AllRequiredData message object.
+
+    Args:
+    json_or_yaml (str): path to JSON or YAML file. must end in .json or .yaml
+
+    Returns an `olf_pb2.AllRequiredData` object.
+    """
+    all_required_data = olf_pb2.AllRequiredData()
+
+    with open(json_or_yaml, 'r') as f:
+        if json_or_yaml.endswith('.json'):
+            load_json(f, all_required_data)
+
+        elif json_or_yaml.endswith('.yaml'):
+            load_yaml(f, all_required_data)
+        else:
+            raise ValueError('file must end with either .json or .yaml')
+
+    return all_required_data
 
 
 # Using an 8 bit, unsigned type to represent this on the Arduino side.
@@ -247,12 +295,17 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 
 
 def main():
+    # TODO try to refactor to inherit / share (at least some?) command line
+    # arguments with upload.py ?
     parser = argparse.ArgumentParser()
     parser.add_argument('-u', '--upload', action='store_true', default=False,
         help='also uploads Arduino code before running'
     )
     # TODO just detect? or still have this as an option? maybe have on default,
-    # and detect by default?
+    # and detect by default? (might not be very easy to detect with docker,
+    # at least not without using privileged mode as opposed to just passing one
+    # specific port... https://stackoverflow.com/questions/24225647 )
+    # maybe just use privileged though?
     parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
         help='port the Arduino is connected to. '
         'For uploading and communication.'
@@ -284,7 +337,15 @@ def main():
     ignore_ack = args.ignore_ack
     verbose = args.verbose
     baud_rate = parse_baud_from_sketch()
+
+
+    import ipdb; ipdb.set_trace()
+
     print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
+    # TODO TODO define some class that has its own context manager that maybe
+    # essentially wraps the Serial one? (just so people don't need that much
+    # boilerplate, including explicit calls to pyserial, when using this in
+    # other python code)
     with serial.Serial(port, baud_rate, timeout=0.1) as ser:
         print('Connected')
         # TODO how to write in such a way that we don't need this sleep?
@@ -293,49 +354,7 @@ def main():
         # available on Arduino...
         time.sleep(1.0)
 
-        '''
-        settings = olf_pb2.Settings()
-        settings.timing.pre_pulse_us = int(2e6)
-        settings.timing.pulse_us = int(1e6)
-        settings.timing.post_pulse_us = int(10e6)
-        '''
-
-        #'''
-        settings = olf_pb2.Settings()
-        # TODO add validation in python wrapper class to prevent this from being
-        # false if pulse_timing not specified
-        settings.follow_hardware_timing = True
-        #'''
-
-        settings.enable_timing_output = True
-
-        if ignore_ack:
-            # Default is False
-            settings.no_ack = True
-
-            # TODO do i want an option like no_ack to disable / enable debug
-            # prints at runtime? or maybe just use this? or maybe neither is
-            # worth...
-
-        write_message(ser, settings, ignore_ack=ignore_ack,
-            verbose=verbose
-        )
-
-
-        pin_sequence = olf_pb2.PinSequence()
-
-        # TODO is the max size of this implemented in python protobuf outputs
-        # too? or was that just a nanopb feature? (try to assign something
-        # bigger here) (if not enforced in python, probably want to manually add
-        # that validation here)
-
-        # https://stackoverflow.com/questions/23726335
-        #pin_sequence.pins.extend([4, 5, 6, 7, 8, 9, 10, 11, 12])
-        #pin_sequence.pins.extend([4, 5])
-        #pin_sequence.pins.extend([4])
-        pin_sequence.pins.extend([2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,7,7,7,8,8,8,
-            9,9,9,10,10,10,11,11,11
-        ])
+        write_message(ser, settings, ignore_ack=ignore_ack, verbose=verbose)
 
         write_message(ser, pin_sequence, ignore_ack=ignore_ack, verbose=verbose)
 

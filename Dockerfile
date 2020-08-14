@@ -30,10 +30,20 @@ WORKDIR /olfactometer
 COPY setup_arduino-cli.sh .
 RUN ./setup_arduino-cli.sh
 
+# This was nice because changes to code didn't necessarily require installing
+# all the dependencies again, because of the Docker build caching, but it seems
+# `setup.py` is basically required to have the tests in their own tree...
 # "When using COPY with more than one source file, the destination must be a
 # directory and end with a /"
-COPY *requirements.txt ./
-RUN pip install -r requirements.txt && pip install -r test_requirements.txt
+#COPY *requirements.txt ./
+#RUN pip install -r requirements.txt && pip install -r test_requirements.txt
+
+# TODO TODO any real way to just have changes to setup.py requirements
+# invalidate the 'pip install .' step, and have changes to the code not trigger.
+# The issue as i see it, is that i think i need to copy all the code before
+# "pip install ."
+# TODO maybe i can initialize the files to be empty, install editable,
+# and overwrite them?
 
 # TODO maybe put in a home directory (would need to make, or at least make a
 # user...) or something instead? is it on path by default here?
@@ -44,7 +54,7 @@ COPY . .
 
 # Since we disable the automatic generation when `olfactometer.py` is run in
 # Docker (since the code should never change, without triggering this anyway...)
-RUN protoc --python_out=. olf.proto
+RUN protoc --python_out=./olfactometer/ olf.proto && pip install .
 
 # TODO also do the nanopb generation stuff + setting up arduino libraries in
 # here?

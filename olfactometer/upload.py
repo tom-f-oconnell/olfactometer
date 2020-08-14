@@ -11,9 +11,9 @@ import argparse
 # TODO TODO force arduino code to be committed before upload, and embed commit
 # hash in arduino code somehow
 
-this_script_dir = split(abspath(realpath(__file__)))[0]
-sketch_dir = join(this_script_dir, 'firmware/olfactometer')
-nanopb_dir = join(this_script_dir, 'nanopb')
+project_root = split(split(abspath(realpath(__file__)))[0])[0]
+sketch_dir = join(project_root, 'firmware/olfactometer')
+nanopb_dir = join(project_root, 'nanopb')
 arduino_lib_dir = join(split(sketch_dir)[0], 'libraries')
 
 
@@ -40,7 +40,7 @@ def make_arduino_libraries(delete_existing=False):
             os.symlink(src, dst)
 
     nanopb_arduino_src_dir = abspath(
-        join(this_script_dir, 'nanopb-arduino', 'src')
+        join(project_root, 'nanopb-arduino', 'src')
     )
     nanopb_arduino_lib_dir = join(arduino_lib_dir, 'nanopb-arduino')
     os.makedirs(nanopb_arduino_lib_dir, exist_ok=True)
@@ -75,10 +75,10 @@ def generate_and_move_protobuf_code():
 
 
 def upload(board='arduino:avr:mega', port='/dev/ttyACM0', dry_run=False,
-    verbose=False):
+    show_properties=False, arduino_debug_prints=False, verbose=False):
 
     # This does need to be absolute
-    build_path = abspath(join(this_script_dir, 'build'))
+    build_path = abspath(join(project_root, 'build'))
     if exists(build_path):
         shutil.rmtree(build_path)
 
@@ -91,11 +91,20 @@ def upload(board='arduino:avr:mega', port='/dev/ttyACM0', dry_run=False,
         f'--libraries {arduino_lib_dir} '
         f'--build-path {build_path} --build-cache-path {build_cache_path}'
     )
+    if show_properties:
+        cmd += ' --show-properties'
+    if arduino_debug_prints:
+        # Was between this and compiler.c.extra_flags and / or
+        # compiler.cpp.extra_flags. I'm assuming this sets both of those?
+        # https://github.com/arduino/arduino-cli/issues/210 warns that this can
+        # / will override similar flags specified in boards.txt, though I'm not
+        # sure that will be an issue we encounter.
+        cmd += ' --build-properties build.extra_flags=-DDEBUG_PRINTS'
     if verbose:
         cmd += ' -v'
         
     upload_args = f' -u -t -p {port}'
-    if not dry_run:
+    if not (dry_run or show_properties):
         cmd += upload_args
 
         # TODO i managed to get the same "...Device or resource busy
@@ -119,6 +128,8 @@ def upload(board='arduino:avr:mega', port='/dev/ttyACM0', dry_run=False,
     # (some resetting we can do? or just wait?)
 
     # TODO parse output to check the -t flag indicated successful verification
+    # (if returncode is sufficient, no need...)
+
     p = Popen(cmd, shell=True)
     p.communicate()
 
@@ -134,12 +145,14 @@ def upload(board='arduino:avr:mega', port='/dev/ttyACM0', dry_run=False,
         raise RuntimeError('compilation or upload failed')
 
 
-def main(port='/dev/ttyACM0', dry_run=False, verbose=False,
-    clear_libraries=False):
+def main(port='/dev/ttyACM0', dry_run=False, show_properties=False,
+    arduino_debug_prints=False, verbose=False, clear_libraries=False):
 
     make_arduino_libraries(delete_existing=clear_libraries)
     generate_and_move_protobuf_code()
-    upload(dry_run=dry_run, verbose=verbose)
+    upload(dry_run=dry_run, show_properties=show_properties,
+        arduino_debug_prints=arduino_debug_prints, verbose=verbose
+    )
 
 
 if __name__ == '__main__':
@@ -150,15 +163,29 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dry-run', action='store_true', default=False,
         help='do not actually upload. just compile.'
     )
+    parser.add_argument('-s', '--show-properties', action='store_true',
+        default=False, help='shows arduino-cli compilation "build properties" '
+        'and exits (without compiling or uploading)'
+    )
     parser.add_argument('-v', '--verbose', action='store_true', default=False,
         help='make arduino-cli compilation verbose'
+    )
+    parser.add_argument('-g', '--arduino-debug-prints', action='store_true',
+        default=False, help='compile Arduino code with DEBUG_PRINTS defined. '
+        'Arduino will print more stuff over USB and its code size will increase'
+        ' slightly.'
     )
     parser.add_argument('-c', '--clear-libraries', action='store_true',
         default=False, help='delete and re-create libraries'
     )
     args = parser.parse_args()
 
-    main(port=args.port, dry_run=args.dry_run, verbose=args.verbose,
+    main(
+        port=args.port,
+        dry_run=args.dry_run,
+        show_properties=args.show_properties,
+        verbose=args.verbose,
+        arduino_debug_prints=args.arduino_debug_prints,
         clear_libraries=args.clear_libraries
     )
 

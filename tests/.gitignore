@@ -1,0 +1,4 @@
+# Maybe delete this .gitignore though? So I can include manually generated JSON
+# and YAML files?
+*.yaml
+*.json
