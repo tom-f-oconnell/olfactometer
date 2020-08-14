@@ -16,15 +16,16 @@ Here are some partial instructions for a manual install on Windows:
 - `protoc>=3.0.0`
 - `arduino-cli` (`setup_arduino-cli.sh` may at least provide hints on what steps
    are required on Windows here)
+- A recent version of `pip` (`20.2.2` definitely works, `9.0.1` does not)
 
 ##### Installation
 ```
-pip install -r requirements.txt
+pip install .
 ```
 ##### Running
 The `-u` flag is only needed on the first run, or after changing the firmware.
 ```
-python olfactometer.py -p <COM-port-of-your-Arduino> -u
+olfactometer.py -p <COM-port-of-your-Arduino> -u <config-file>
 ```
 
 ### Running
@@ -34,18 +35,10 @@ your Arduino.
 
 To upload the code to your Arduino, and run an experiment after:
 ```
-sudo docker run --device=/dev/ttyACM0 olfactometer -p /dev/ttyACM0 -u
+sudo docker run --device=/dev/ttyACM0 -i olfactometer -p /dev/ttyACM0 -u < <config-file>
 ```
 
 To just run an experiment:
 ```
-sudo docker run --device=/dev/ttyACM0 olfactometer -p /dev/ttyACM0 <TODO>
+sudo docker run --device=/dev/ttyACM0 -i olfactometer -p /dev/ttyACM0 < <config-file>
 ```
-
-#### Todo
-
-Provide a means of configuring `olfactometer.py` (the trial structure,
-especially), through command line arguments (including reading config files on
-the host). Since Docker makes it harder to change the code, this is especially
-important.
-

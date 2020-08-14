@@ -45,8 +45,6 @@ RUN ./setup_arduino-cli.sh
 # TODO maybe i can initialize the files to be empty, install editable,
 # and overwrite them?
 
-# TODO maybe put in a home directory (would need to make, or at least make a
-# user...) or something instead? is it on path by default here?
 # This might also copy the stuff we already copied above, but that's a small
 # price to pay for the simplicity of not explicitly copying everything else,
 # and the earlier copies help with caching.
@@ -54,7 +52,13 @@ COPY . .
 
 # Since we disable the automatic generation when `olfactometer.py` is run in
 # Docker (since the code should never change, without triggering this anyway...)
-RUN protoc --python_out=./olfactometer/ olf.proto && pip install .
+RUN protoc --python_out=./olfactometer/ olf.proto
+
+# TODO did this pip install (in the second of two builds, without clearing
+# anything) actually manage to use some kind of pip cache? (olfactometer.py
+# changed, so i would have thought it'd completely redo the pip install, but it
+# seemed faster?)
+RUN pip install .
 
 # TODO also do the nanopb generation stuff + setting up arduino libraries in
 # here?
@@ -64,5 +68,5 @@ RUN protoc --python_out=./olfactometer/ olf.proto && pip install .
 # TODO and maybe pip uninstall test_requirements.txt after, if at build time
 # only?
 
-ENTRYPOINT ["./olfactometer.py"]
+ENTRYPOINT ["./olfactometer/olfactometer.py"]
 

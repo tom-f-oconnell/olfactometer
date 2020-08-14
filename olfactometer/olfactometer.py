@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 
-# TODO maybe wrap this in a shell script / other python script which uses
-# protoc to generate appropriate python definitions to import, so that import
-# here will have latest version?
-
 import os
 from os.path import split, join
 import binascii
 import argparse
 import time
 import subprocess
+import warnings
+import sys
+import tempfile
 
 import serial
 from google.protobuf.internal.encoder import _VarintBytes
-from google.protobuf import json_format #import MessageToDict, ParseDict
+from google.protobuf import json_format
 import yaml
 
-# TODO need to change syntax so this script is runnable from wherever? or no?
 import upload
 
 in_docker = 'OLFACTOMETER_IN_DOCKER' in os.environ
@@ -28,12 +26,17 @@ project_root = split(this_script_dir)[0]
 if not in_docker:
     # TODO only do this if proto_file has changed since the python outputs have
     proto_file = join(project_root, 'olf.proto')
-    p = subprocess.Popen(
-        ['protoc', f'--python_out={this_script_dir}', proto_file]
-    )
+    #proto_path, proto_file = split(join(project_root, 'olf.proto'))
+    proto_path, _ = split(proto_file)
+    p = subprocess.Popen(['protoc', f'--python_out={this_script_dir}',
+        f'--proto_path={proto_path}', proto_file
+    ])
     p.communicate()
     failure = bool(p.returncode)
     if failure:
+        print(proto_path)
+        print(proto_file)
+        print(this_script_dir)
         raise RuntimeError(f'generating python code from {proto_file} failed')
 
 # TODO is pb2 suffix indication i'm not using the version i want?
@@ -98,8 +101,9 @@ def parse_baud_from_sketch():
 def load_json(json_filelike, message=None):
     if message is None:
         message = olf_pb2.AllRequiredData()
-    # TODO does this need to be str instead of a filelike?
-    json_format.Parse(json_filelike, message)
+    json_data = json_filelike.read()
+    # filelike does not work here. str does.
+    json_format.Parse(json_data, message)
     return message
 
 
@@ -118,21 +122,41 @@ def load_yaml(yaml_filelike, message=None):
 # TODO implement a bunch of round trip tests of different types of messages,
 # between all three formats (maybe just YAML <-> olf_pb2 message though, as that
 # includes JSON in the middle?)
-def load(json_or_yaml):
+def load(json_or_yaml_path=None):
     """Parses JSON or YAML file into an AllRequiredData message object.
 
     Args:
-    json_or_yaml (str): path to JSON or YAML file. must end in .json or .yaml
+    json_or_yaml_path (str or None): path to JSON or YAML file.
+        must end in .json or .yaml. If `None`, reads from `sys.stdin`
 
     Returns an `olf_pb2.AllRequiredData` object.
     """
+    # TODO TODO any way to pass stdin back to interactive input, after (EOF?)?
+    # (for interactive stuff during trial, like pausing...) (if not, maybe
+    # implement pausing as arduino tracking state and knowing when host
+    # disconnects?)
+    if json_or_yaml_path is None:
+        # Assuming we are reading from `sys.stdin` in this case, as I have not
+        # yet settled on other mechanisms for getting files into Docker.
+        print('Reading config from stdin')
+        stdin_str = sys.stdin.read()
+        if stdin_str.lstrip()[0] == '{':
+            suffix = '.json'
+        else:
+            suffix = '.yaml'
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix=suffix, delete=False
+            ) as temp:
+            json_or_yaml_path = temp.name
+            temp.write(stdin_str)
+
     all_required_data = olf_pb2.AllRequiredData()
 
-    with open(json_or_yaml, 'r') as f:
-        if json_or_yaml.endswith('.json'):
+    with open(json_or_yaml_path, 'r') as f:
+        if json_or_yaml_path.endswith('.json'):
             load_json(f, all_required_data)
 
-        elif json_or_yaml.endswith('.yaml'):
+        elif json_or_yaml_path.endswith('.yaml'):
             load_yaml(f, all_required_data)
         else:
             raise ValueError('file must end with either .json or .yaml')
@@ -294,34 +318,10 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
             print(f'Time to msg num ack: {time_to_msgnum_ack:.3f}')
 
 
-def main():
-    # TODO try to refactor to inherit / share (at least some?) command line
-    # arguments with upload.py ?
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-u', '--upload', action='store_true', default=False,
-        help='also uploads Arduino code before running'
-    )
-    # TODO just detect? or still have this as an option? maybe have on default,
-    # and detect by default? (might not be very easy to detect with docker,
-    # at least not without using privileged mode as opposed to just passing one
-    # specific port... https://stackoverflow.com/questions/24225647 )
-    # maybe just use privileged though?
-    parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
-        help='port the Arduino is connected to. '
-        'For uploading and communication.'
-    )
-    parser.add_argument('-v', '--verbose', action='store_true', default=False)
-    # TODO maybe add arduino config parameter to ask the arduino not to send
-    # msgnum acks in this case? (which would clutter the output)
-    parser.add_argument('-i', '--ignore-ack', action='store_true',
-        default=False, help='ignores acknowledgement message #s arduino sends. '
-        'makes viewing all debug prints easier, as no worry they will interfere'
-        ' with receipt of message number.'
-    )
-    args = parser.parse_args()
+def main(config_file, port='/dev/ttyACM0', do_upload=False, ignore_ack=False,
+    verbose=False):
 
-    port = args.port
-    if args.upload:
+    if do_upload:
         # TODO save file modification time at upload and check if it has changed
         # before re-uploading with this flag... (just to save program memory
         # life...)
@@ -334,13 +334,20 @@ def main():
         # non-zero exit status, stopping further steps here, as intended.
         upload.main(port=port)
 
-    ignore_ack = args.ignore_ack
-    verbose = args.verbose
+    all_required_data = load(config_file)
+    settings = all_required_data.settings
+    pin_sequence = all_required_data.pin_sequence
+
+    if ignore_ack:
+        warnings.warn('ignore_ack should only be used for debugging')
+        # Default is False
+        settings.no_ack = True
+
+    if verbose:
+        print('Config data:')
+        print(all_required_data)
+
     baud_rate = parse_baud_from_sketch()
-
-
-    import ipdb; ipdb.set_trace()
-
     print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
     # TODO TODO define some class that has its own context manager that maybe
     # essentially wraps the Serial one? (just so people don't need that much
@@ -374,9 +381,50 @@ def main():
                     print(e)
                     print(line)
 
-    import ipdb; ipdb.set_trace()
-
 
 if __name__ == '__main__':
-    main()
+    # TODO try to refactor to inherit / share (at least some?) command line
+    # arguments with upload.py ?
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-u', '--upload', action='store_true', default=False,
+        help='also uploads Arduino code before running'
+    )
+    # TODO just detect? or still have this as an option? maybe have on default,
+    # and detect by default? (might not be very easy to detect with docker,
+    # at least not without using privileged mode as opposed to just passing one
+    # specific port... https://stackoverflow.com/questions/24225647 )
+    # maybe just use privileged though?
+    parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
+        help='port the Arduino is connected to. '
+        'For uploading and communication.'
+    )
+    parser.add_argument('-v', '--verbose', action='store_true', default=False)
+    # TODO maybe add arduino config parameter to ask the arduino not to send
+    # msgnum acks in this case? (which would clutter the output)
+    parser.add_argument('-i', '--ignore-ack', action='store_true',
+        default=False, help='ignores acknowledgement message #s arduino sends. '
+        'makes viewing all debug prints easier, as no worry they will interfere'
+        ' with receipt of message number.'
+    )
+    '''
+    if not in_docker:
+        parser.add_argument('config_file', type=str, help='.json/.yaml file '
+            'containing all required data. see `load` function.'
+        )
+    '''
+    parser.add_argument('config_file', type=str, nargs='?', default=None,
+        help='.json/.yaml file containing all required data. see `load` '
+        'function.'
+    )
+    args = parser.parse_args()
+
+    config_file = args.config_file
+    port = args.port
+    do_upload = args.upload
+    ignore_ack = args.ignore_ack
+    verbose = args.verbose
+
+    main(config_file, port=port, do_upload=do_upload, ignore_ack=ignore_ack,
+        verbose=verbose
+    )
 

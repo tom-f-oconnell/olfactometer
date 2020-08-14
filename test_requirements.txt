@@ -1,0 +1,5 @@
+# For nanopb
+scons
+
+pytest
+inflection

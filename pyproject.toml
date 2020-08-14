@@ -1,0 +1,16 @@
+
+# Turns out, this doesn't work for editable installs anyway, which is the main
+# thing I wanted it for... I'm not sure if there are any real alternatives to
+# (activate fresh venv) -> pip install --upgrade pip --> pip install -e .
+#
+# ...and it doesn't seem possible to specify pip version in here, at least not
+# with the ancient pip installed by default on 18.04 (9.0.1)
+
+[build-system]
+# This setuptools version is just what I got with "pip install --upgrade pip",
+# before running "pip install -e ." (turns out, that is also the version I had
+# before upgrading pip, even though the error message asks you to upgrade
+# setuptools and upgrading pip fixes it...)
+requires = ["setuptools>=39.0.1", "wheel"]
+build-backend = "setuptools.build_meta"
+

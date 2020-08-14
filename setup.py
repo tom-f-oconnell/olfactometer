@@ -23,12 +23,18 @@ setup(
         # Dockerfile)
         'gitpython'
     ],
+    # This just duplicates what's in test_requirements.txt, because apparently
+    # pip doesn't actually provide any way to install these...
     tests_require=[
         # For nanopb
         'scons',
 
         'pytest',
         'inflection'
+    ],
+    scripts=[
+        'olfactometer/olfactometer.py',
+        'olfactometer/upload.py'
     ]
 )
 
