@@ -1,25 +1,33 @@
 #!/usr/bin/env python3
 
 import os
-from os.path import split, join
+from os.path import split, join, realpath, abspath, exists
 import binascii
 import time
 import subprocess
 import warnings
 import sys
 import tempfile
-import pkg_resources
 
 import serial
 from google.protobuf.internal.encoder import _VarintBytes
-from google.protobuf import json_format
+from google.protobuf import json_format, pyext
 import yaml
 
 from olfactometer import upload
 
 in_docker = 'OLFACTOMETER_IN_DOCKER' in os.environ
-this_script_dir = split(__file__)[0]
-project_root = split(this_script_dir)[0]
+
+# TODO TODO could try to replace everything using this w/
+# pkg_resources.find_resource, though not sure this will actually support any
+# more cases as i'm using both (+ in python 3.7+ another module is recommended
+# for the same function) (.whl should be the case to test)
+# This will be under site-packages if pip installed (in default, non-editable
+# mode at least).
+this_package_dir = split(abspath(realpath(__file__)))[0]
+
+assert exists(this_package_dir), \
+    f'this_package_dir={this_package_dir} does not exist'
 
 # TODO need to specify path to .proto file when this is installed as a script
 # (probably need to put it in some findable location using setuptools...)
@@ -28,26 +36,28 @@ project_root = split(this_script_dir)[0]
 # The build process handles this in the Docker case. If the code would changes
 # (which can only happen through a build) it would trigger protoc compilation as
 # part of the build.
-import ipdb; ipdb.set_trace()
 if not in_docker:
+    # TODO maybe only do this if installed editable / not installed and being
+    # used from within source tree? (would probably have to be a way to include
+    # build in setup.py... and not sure there is)
     # TODO only do this if proto_file has changed since the python outputs have
-    proto_file = join(project_root, 'olf.proto')
-    #proto_path, proto_file = split(join(project_root, 'olf.proto'))
+    proto_file = join(this_package_dir, 'olf.proto')
     proto_path, _ = split(proto_file)
-    p = subprocess.Popen(['protoc', f'--python_out={this_script_dir}',
+    p = subprocess.Popen(['protoc', f'--python_out={this_package_dir}',
         f'--proto_path={proto_path}', proto_file
     ])
     p.communicate()
     failure = bool(p.returncode)
     if failure:
-        print(proto_path)
-        print(proto_file)
-        print(this_script_dir)
+        # TODO delete me
+        print('proto_path:', proto_path)
+        print('proto_file:', proto_file)
+        print('this_package_dir:', this_package_dir)
+        #
         raise RuntimeError(f'generating python code from {proto_file} failed')
 
 # TODO is pb2 suffix indication i'm not using the version i want?
 # syntax was version 3, and the generated code seems to acknowledge that...
-
 from olfactometer import olf_pb2
 
 
@@ -71,37 +81,19 @@ if in_docker:
         _builtin_print(*args, flush=True, **kwargs)
     print = flush_print
 
+nanopb_options_path = join(this_package_dir, 'olf.options')
+with open(nanopb_options_path, 'r') as f:
+    lines = [x.strip() for x in f.readlines()]
+nanopb_options_lines = [x for x in lines if len(x) > 0 and not x[0] == '#']
 
-def parse_baud_from_sketch():
-    sketch = join(project_root, 'firmware', 'olfactometer',
-        'olfactometer.ino'
-    )
-    with open(sketch, 'r') as f:
-        lines = f.readlines()
-
-    begin_prefix = 'Serial.begin('
-    found_line = False
-    for line in lines:
-        if begin_prefix in line:
-            if found_line:
-                raise ValueError(f'too many {begin_prefix} lines in sketch to '
-                    'parse baud rate'
-                )
-            found_line = True
-            baud_line = line
-
-    if not found_line:
-        raise ValueError('no lines containing {begin_prefix} in sketch. could '
-            'not parse baud rate'
-        )
-
-    parts = baud_line.split('(')
-    assert len(parts) == 2
-    parts = parts[1].split(')')
-    assert len(parts) == 2
-    baud_rate = int(parts[0])
-    return baud_rate
-
+# TODO implement preprocessing of config from intermediate (dict probably?  yaml
+# and json loaders can be configured to give comprable output?) to infer keys
+# that aren't really necessary (like pinGroups / pins) (and maybe allow 'pins'
+# to be used in place of pinSequence? could be a mess for maintainability
+# though...
+# TODO maybe try nesting the PinGroup object into the other message type, and
+# see if that changes the json syntax? (would have to adapt C code a bit though,
+# AND might prevent nanopb from optimizing as much from the *.options)
 
 def load_json(json_filelike, message=None):
     if message is None:
@@ -124,9 +116,6 @@ def load_yaml(yaml_filelike, message=None):
     return message
 
 
-# TODO implement a bunch of round trip tests of different types of messages,
-# between all three formats (maybe just YAML <-> olf_pb2 message though, as that
-# includes JSON in the middle?)
 def load(json_or_yaml_path=None):
     """Parses JSON or YAML file into an AllRequiredData message object.
 
@@ -169,6 +158,182 @@ def load(json_or_yaml_path=None):
     return all_required_data
 
 
+def max_count(name):
+    """Returns the int max_count field associated with name in olf.options.
+    """
+    field_and_sep = 'max_count:'
+    for line in nanopb_options_lines:
+        if line.startswith(name):
+            rhs = line.split()[1]
+            if rhs.startswith(field_and_sep):
+                try:
+                    return int(rhs[len(field_and_sep):])
+                except ValueError as e:
+                    # Parsing could fail if there is a comment right after int,
+                    # but should just avoid making lines like that in the
+                    # options file.
+                    print('Fix this line in the olf.options file:')
+                    print(line)
+                    raise
+    raise ValueError(f'no lines starting with name={name}')
+
+
+def validate_settings(settings, **kwargs):
+    if settings.WhichOneof('control') == 'follow_hardware_timing':
+        if not settings.follow_hardware_timing:
+            raise ValueError('follow_hardware_timing must be True if using it '
+                'in place of the PulseTiming option'
+            )
+    if settings.no_ack:
+        raise ValueError('only -i command line arg should set settings.no_ack')
+
+
+def validate_pin_sequence(pin_sequence, warn=True):
+    # Could make the max count validation automatic, but not really worth it.
+    mc = max_count('PinSequence.pin_groups')
+    gc = len(pin_sequence.pin_groups)
+    if gc == 0:
+        raise ValueError('PinSequence should not be empty')
+    elif gc > mc:
+        raise ValueError('PinSequence has length longer than maximum '
+            f'({gc} > {mc})'
+        )
+    if warn:
+        glens = {len(g.pins) for g in pin_sequence.pin_groups}
+        if len(glens) > 1:
+            warnings.warn(f'PinSequence has unequal length groups ({glens})')
+
+
+# TODO might want to require communication w/ arduino here somehow?
+# or knowledge of which arduino's are using which pins?
+# (basically trying to duplicated the pin_is_reserved check on the arduino side,
+# on top of other basic bounds checking)
+def validate_pin(pin):
+    assert type(pin) is int
+    if pin < 0:
+        raise ValueError('pin must be positive')
+    elif pin in (0, 1):
+        raise ValueError('pins 0 and 1 and reserved for Serial communication')
+    # TODO can the arduino mega analog input pins also be used as digital
+    # outputs? do they occupy the integers just past 53?
+    # Assuming an Arduino Mega, which should have 53 as the highest valid
+    # digital pin number (they start at 0).
+    elif pin > 53:
+        raise ValueError('pin numbers >53 invalid')
+
+
+def validate_pin_group(pin_group, **kwargs):
+    mc = max_count('PinGroup.pins')
+    gc = len(pin_group.pins)
+    if gc == 0:
+        raise ValueError('PinGroup should not be empty')
+    elif gc > mc:
+        raise ValueError(f'PinGroup has {gc} pins (> max {mc}): {pin_group}')
+
+    if len(pin_group.pins) != len(set(pin_group.pins)):
+        raise ValueError('PinGroup has duplicate pins: {pin_group}')
+
+    for p in pin_group.pins:
+        validate_pin(p)
+
+
+# TODO rename to _full_name... if i end up switching to that one
+# Each function in here should take either **kwargs (if no potential warnings)
+# or warn=True kwarg. They should return None and may raise ValueError.
+_name2validate_fn = {
+    'Settings': validate_settings,
+    'PinSequence': validate_pin_sequence,
+    'PinGroup': validate_pin_group
+}
+def validate(msg, warn=True, _first_call=True):
+    """Raises ValueError if msg validation fails.
+    """
+    if isinstance(msg, pyext._message.RepeatedCompositeContainer):
+        for value in msg:
+            validate(value, warn=warn, _first_call=False)
+        return
+    elif isinstance(msg, pyext._message.RepeatedScalarContainer):
+        # Only iterating over and validating these elements to try to catch any
+        # base-case types that I wasn't accounting for.
+        for value in msg:
+            validate(value, warn=warn, _first_call=False)
+        return
+    try:
+        # TODO either IsInitialized or FindInitializationErrors useful?
+        # latter only useful if former is False or what? see docs
+        # (and are the checks that happen in parsing redundant with these?)
+        # TODO i assume UnknownFields is checked at parse time by default?
+
+        # TODO remove any of the following checks that are redundant w/ the
+        # (from json) parsers
+        if not msg.IsInitialized():
+            raise ValueError()
+
+        elif msg.FindInitializationErrors() != []:
+            raise ValueError()
+
+        elif len(msg.UnknownFields()) != 0:
+            raise ValueError()
+
+    except AttributeError:
+        if _first_call:
+            # Assuming if it were one of this top level types, it would have
+            # all the methods used in the try block, and thus it wouldn't have
+            # triggered the AttributeError. maybe a better way to phrase...
+            raise ValueError('msg should be a message type from olf_pb2 module')
+
+        if type(msg) not in (int, bool):
+            raise ValueError(f'unexpected type {type(msg)}')
+        return
+
+    name = msg.DESCRIPTOR.name
+    full_name = msg.DESCRIPTOR.full_name
+    assert name == full_name, \
+        f'{name} != {full_name} decide which one to use and fix code'
+
+    if name in _name2validate_fn:
+        _name2validate_fn[name](msg, warn=warn)
+        # Not returning here, so that i don't have to also implement recursion
+        # in PinSequence -> PinGroup
+
+    # The first element of each tuple returned by ListFields is a
+    # FieldDescriptor object, but we are using (the seemingly equivalent)
+    # msg.DESCRIPTOR instead.
+    for _, value in msg.ListFields():
+        validate(value, warn=warn, _first_call=False)
+
+
+def parse_baud_from_sketch():
+    sketch = join(this_package_dir, 'firmware', 'olfactometer',
+        'olfactometer.ino'
+    )
+    with open(sketch, 'r') as f:
+        lines = f.readlines()
+
+    begin_prefix = 'Serial.begin('
+    found_line = False
+    for line in lines:
+        if begin_prefix in line:
+            if found_line:
+                raise ValueError(f'too many {begin_prefix} lines in sketch to '
+                    'parse baud rate'
+                )
+            found_line = True
+            baud_line = line
+
+    if not found_line:
+        raise ValueError('no lines containing {begin_prefix} in sketch. could '
+            'not parse baud rate'
+        )
+
+    parts = baud_line.split('(')
+    assert len(parts) == 2
+    parts = parts[1].split(')')
+    assert len(parts) == 2
+    baud_rate = int(parts[0])
+    return baud_rate
+
+
 # Using an 8 bit, unsigned type to represent this on the Arduino side.
 MAX_MSG_NUM = 255
 curr_msg_num = 0
@@ -199,11 +364,32 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
     # https://www.datadoghq.com/blog/engineering/protobuf-parsing-in-python/
     size = len(serialized)
     varint_size = _VarintBytes(size)
-    assert type(varint_size) is bytes
 
     def print_bytes(bs):
         s = bs.hex()
         print(' '.join([a+b for a,b in zip(s[::2], s[1::2])]))
+
+    def write_bytes(bs):
+        assert type(bs) is bytes
+        n_bytes_written = ser.write(bs)
+        assert n_bytes_written == len(bs)
+
+    def crc16_0x1021(bs):
+        # This uses polynomial 0x1021 (same as what I'm using on Arduino side)
+        crc = binascii.crc_hqx(varint_size + serialized, 0xFFFF)
+
+        # TODO also check input size (...why?) / that output of crc *should* fit
+        # into 2 bytes?
+
+        # This 'big' [Endian] byte order works for comparing on Arduino side,
+        # with current code there.
+        crc_bytes = crc.to_bytes(2, 'big')
+        assert type(crc_bytes) is bytes and len(crc_bytes) == 2
+        return crc_bytes
+
+    # TODO add unit tests where random parts of data and / or crc are changed
+    # (after crc calculation, but before sending) (-> verify failure)
+    crc_bytes = crc16_0x1021(varint_size + serialized)
 
     '''
     if verbose:
@@ -213,40 +399,27 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
         print_bytes(serialized)
     '''
 
+    n_bytes = len(varint_size) + len(serialized) + 2
+    if use_message_nums:
+        n_bytes += 1
+
     if verbose:
-        print('writing to arduino...', flush=True, end='')
+        print(f'writing {n_bytes} bytes to arduino...', flush=True, end='')
 
-    # TODO factor this write -> # bytes written check out...
-
-    # TODO TODO need to check we don't write more than arduino's buffer size
-    # (until acked)? just 64 bytes, right? assert to fail if single messages
-    # exceed? or what? can't just ack at end of message then, if i really need
-    # ack's to tell python it's ok to send more of one message...
-
-    n_bytes_written = ser.write(varint_size)
-    assert n_bytes_written == len(varint_size)
+    # TODO TODO TODO need to check we don't write more than arduino's buffer
+    # size (until acked)? just 64 bytes, right? assert to fail if single
+    # messages exceed? or what? can't just ack at end of message then, if i
+    # really need ack's to tell python it's ok to send more of one message...
+    # SEEMS SO!!!
 
     # TODO how to get it to fail in this case / wait for other bytes for
     # decoding? (it currently does, w/ delimited, but add unit tests for both
     # under and over size)
-    #n_bytes_written = ser.write(serialized[:12])
+    #write_bytes(serialized[:12])
 
-    n_bytes_written = ser.write(serialized)
-    assert n_bytes_written == size
-
-    # This uses polynomial 0x1021 (same as what I'm using on Arduino side)
-    crc = binascii.crc_hqx(varint_size + serialized, 0xFFFF)
-
-    # This 'big' [Endian] byte order works for comparing on Arduino side,
-    # with current code there.
-    crc_bytes = crc.to_bytes(2, 'big')
-    assert type(crc_bytes) is bytes and len(crc_bytes) == 2
-
-    # TODO add unit tests where random parts of data and / or crc are changed
-    # (after crc calculation, but before sending) (-> verify failure)
-
-    n_bytes_written = ser.write(crc_bytes)
-    assert n_bytes_written == 2
+    write_bytes(varint_size)
+    write_bytes(serialized)
+    write_bytes(crc_bytes)
 
     if use_message_nums:
         # TODO maybe do this between write and flush? does that guarantee it
@@ -272,10 +445,8 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
         # TODO this is unsigned if positive? arduino agrees on value for whole 8
         # bit range?
         before_sending_msg_num = time.time()
-        n_bytes_written = ser.write(curr_msg_num.to_bytes(1, 'big'))
-        # TODO want to ser.flush() here too?
+        write_bytes(curr_msg_num.to_bytes(1, 'big'))
         ser.flush()
-        assert n_bytes_written == 1
 
         if not ignore_ack:
             # TODO should i just block for acknowledgement here, or make some
@@ -348,29 +519,20 @@ def main(config_file, port='/dev/ttyACM0', do_upload=False, ignore_ack=False,
     settings = all_required_data.settings
     pin_sequence = all_required_data.pin_sequence
 
-    # TODO TODO maybe do validation of inputs here?
-    # - settings.no_ack should probably not be set
-    # - (if we have data on which pins are reserved on this arduino)
-    #   check that no pins are reserved (or at least check pins in sequence
-    #   aren't specified for some other purpose)
-    # - check range on pin numbers
-    # - check follow_... is True or not set
-    # - no zero length pinsequences or pingroups
-    # - maybe err / warn if length of pin groups are not all the same?
-    # TODO TODO parse max_count of all fields in olf.options and check inputs
-    # are within those length limits
+    if verbose or try_parse:
+        print('Config data:')
+        print(all_required_data)
+
+    warn = True
+    validate(all_required_data, warn=warn)
+
+    if try_parse:
+        sys.exit()
 
     if ignore_ack:
         warnings.warn('ignore_ack should only be used for debugging')
         # Default is False
         settings.no_ack = True
-
-    if verbose or try_parse:
-        print('Config data:')
-        print(all_required_data)
-
-    if try_parse:
-        sys.exit()
 
     baud_rate = parse_baud_from_sketch()
     print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')

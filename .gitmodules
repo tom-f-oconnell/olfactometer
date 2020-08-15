@@ -1,6 +1,6 @@
 [submodule "nanopb"]
-	path = nanopb
+	path = olfactometer/nanopb
 	url = https://github.com/nanopb/nanopb
 [submodule "nanopb-arduino"]
-	path = nanopb-arduino
+	path = olfactometer/nanopb-arduino
 	url = https://github.com/tom-f-oconnell/nanopb-arduino

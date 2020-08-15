@@ -25,7 +25,7 @@ pip install .
 ##### Running
 The `-u` flag is only needed on the first run, or after changing the firmware.
 ```
-olfactometer.py -p <COM-port-of-your-Arduino> -u <config-file>
+olf -p <COM-port-of-your-Arduino> -u <config-file>
 ```
 
 ### Running

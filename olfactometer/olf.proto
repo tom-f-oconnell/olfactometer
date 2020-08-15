@@ -1,6 +1,4 @@
 
-syntax = 'proto3';
-
 // Not including any representation of default pin states for now. Assuming
 // everything defaults to LOW, for simplicity.
 
@@ -8,12 +6,7 @@ syntax = 'proto3';
 // pulse length and stuff on the fly later, now I'll also make the assumption
 // that all pulses are the same length, with equal timing.
 
-// TODO some message to just tell it to replay the currently loaded sequence?
-// (assuming there is one)
-
-// TODO should i add a "start" command, when PulseTiming is specified?
-// (to maybe reduce variation depending on how long communication /
-// deserialization of stuff takes on different targets?)
+syntax = 'proto3';
 
 message PulseTiming {
     uint32 pre_pulse_us = 1;
@@ -57,16 +50,8 @@ message PinGroup {
     repeated uint32 pins = 1;
 }
 
-// TODO TODO TODO change implementation so multiple valves can be triggered at
-// once!
 message PinSequence {
-    // TODO is it invalid if this is length 0? (hopefully, otherwise prob need
-    // to do my own validation) (the spec allows 0)
-    // TODO maybe i should have another field with the length then?
-    // (also so the arduino knows when it's done reading, or executing, if they
-    // come in one-by-one...)
     repeated PinGroup pin_groups = 1;
-    //repeated uint32 pins = 1;
 }
 
 // NOTE: this is only defined so we can let the Python protobuf library handle
@@ -81,8 +66,10 @@ message AllRequiredData {
     PinSequence pin_sequence = 2;
 }
 
-// TODO try using gRPC to implement starting of pulse train?
-// (in PulseTiming case)
+// TODO should i add a "start" command, when PulseTiming is specified?
+// (to maybe reduce variation depending on how long communication /
+// deserialization of stuff takes on different targets?)
+// TODO try the above start command w/ gRPC?
 
 // TODO maybe add messages for feedback from arduino?
 // ACKs? current state? version info / available pins? error state?

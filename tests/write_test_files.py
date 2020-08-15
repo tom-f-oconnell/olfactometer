@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from pprint import pprint
 import json
 
 import yaml
@@ -27,32 +28,27 @@ def write_test_files(verbose=False):
     settings.timing.pulse_us = int(1e6)
     settings.timing.post_pulse_us = int(10e6)
     '''
-    #'''
     settings = olf_pb2.Settings()
-    # TODO add validation in python wrapper class to prevent this from being
-    # false if pulse_timing not specified
     settings.follow_hardware_timing = True
-    #'''
     settings.enable_timing_output = True
     # Default is False
     #settings.no_ack = True
 
-
-    pin_sequence = olf_pb2.PinSequence()
-
-    # TODO is the max size of this implemented in python protobuf outputs
-    # too? or was that just a nanopb feature? (try to assign something
-    # bigger here) (if not enforced in python, probably want to manually add
-    # that validation here)
+    pg1 = olf_pb2.PinGroup()
+    pg2 = olf_pb2.PinGroup()
+    pg3 = olf_pb2.PinGroup()
 
     # https://stackoverflow.com/questions/23726335
-    #pin_sequence.pins.extend([4, 5, 6, 7, 8, 9, 10, 11, 12])
-    pin_sequence.pins.extend([4, 5])
-    #pin_sequence.pins.extend([4])
-    #pin_sequence.pins.extend([2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,7,7,7,8,8,8,
+    pg1.pins.extend([4, 5, 6, 7, 8, 9, 10, 11, 12])
+    pg2.pins.extend([4, 5])
+    pg3.pins.extend([4])
+
+    #pg1.pins.extend([2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,7,7,7,8,8,8,
     #    9,9,9,10,10,10,11,11,11
     #])
 
+    pin_sequence = olf_pb2.PinSequence()
+    pin_sequence.pin_groups.extend([pg1, pg2, pg3])
 
     all_required_data = olf_pb2.AllRequiredData()
     # Apparently this CopyFrom syntax is required instead of assignment.
@@ -63,7 +59,6 @@ def write_test_files(verbose=False):
 
     ddict = json_format.MessageToDict(all_required_data)
     if verbose:
-        from pprint import pprint
         print('Original str representation:')
         print(all_required_data)
         print('Dictionary representation:')

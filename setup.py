@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
 
-# This is mainly just so files in the ./tests/ directory can import things
-# defined in the project root. Copied from very top of:
-# https://docs.pytest.org/en/stable/goodpractices.html
-# TODO any other way that requires less boilerplate, but can still import from
-# ./tests/?
-
 from setuptools import setup
 
 setup(
@@ -25,7 +19,15 @@ setup(
         # TODO actually use this one... (and does it require git installed in
         # advance?  if so, specify in windows part of README and include in
         # Dockerfile)
-        'gitpython'
+        'gitpython',
+
+        # See note in package_data section below about trying to install
+        # generator that comes with the nanopb submodule we have.
+        # TL;DR using this package for simplicity.
+        'nanopb',
+
+        # TODO TODO delete after debugging
+        'ipdb'
     ],
     # This just duplicates what's in test_requirements.txt, because apparently
     # pip doesn't actually provide any way to install these...
@@ -60,9 +62,25 @@ setup(
     # exist...
     package_data={
         'olfactometer': [
-            '../olf.proto',
-            '../olf.options',
-            '../firmware/olfactometer/*'
+            'olf.proto',
+            'olf.options',
+            'firmware/olfactometer/*',
+
+            # TODO could also try to install the nanopb generator from the
+            # submodule version we have, but i'm leaning towards just using the
+            # pypi nanopb, to not have to mess with that too much. could pin
+            # version if necessary. (implemented using pypi version)
+
+            # nanopb doesn't seem to include a full fledged protoc generator, so
+            # we still need that non-Python dependency.
+
+            # The only .h and .c files in the root of nanopb seem to be the
+            # things we actually use. See upload.py:make_arduino_libraries
+            'nanopb/*.h',
+            'nanopb/*.c',
+
+            'nanopb-arduino/src/*.h',
+            'nanopb-arduino/src/*.cpp'
         ]
     }
 )

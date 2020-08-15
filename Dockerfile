@@ -52,21 +52,24 @@ COPY . .
 
 # Since we disable the automatic generation when `olfactometer.py` is run in
 # Docker (since the code should never change, without triggering this anyway...)
-RUN protoc --python_out=./olfactometer/ olf.proto
+# Need to do this before the "pip install ." step.
+WORKDIR /olfactometer/olfactometer
+RUN protoc --python_out=. olf.proto
 
 # TODO did this pip install (in the second of two builds, without clearing
 # anything) actually manage to use some kind of pip cache? (olfactometer.py
 # changed, so i would have thought it'd completely redo the pip install, but it
 # seemed faster?)
+WORKDIR /olfactometer
 RUN pip install .
 
 # TODO also do the nanopb generation stuff + setting up arduino libraries in
-# here?
+# here? (maybe call one of my own functions for this?)
 
 # TODO TODO run nanopb tests (and any of mine, if i make them...), and maybe use
 # the healthcheck command or whatever it was called to do that?
 # TODO and maybe pip uninstall test_requirements.txt after, if at build time
 # only?
 
-ENTRYPOINT ["./olfactometer/olfactometer.py"]
+ENTRYPOINT ["olf"]
 

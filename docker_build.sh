@@ -45,12 +45,13 @@ cp "${CUSTOM}" "${DOCKER_IGNORE_PATH}"
 # ls-files have other escaping options besides -z?
 GIT_LS_CMD="git ls-files --others --directory"
 eval "${GIT_LS_CMD}" >>"${DOCKER_IGNORE_PATH}"
+# 2020-08-15 2:49am:
+# sed: -e expression #1, char 18: unknown option to `s'
+# TODO TODO fix error above!
 git submodule foreach -q "${GIT_LS_CMD} | sed \"s/^/\$path\//g\"" >>"${DOCKER_IGNORE_PATH}"
 
 TAG_NAME="$(basename `pwd`)"
 
-# TODO need ! prefix to prevent alias from being used? even an issue inside a
-# script?
 # The ':latest' part of the tag (the version?) seems to be filled in
 # automatically (as 'latest') if not specified.
 sudo docker build -t "${TAG_NAME}" .
