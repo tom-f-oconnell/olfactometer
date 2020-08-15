@@ -1,3 +1,3 @@
 
-from olfactometer.olfactometer import load, write_message, main
+from .util import main, write_message, load
 

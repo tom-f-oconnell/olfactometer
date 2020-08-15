@@ -3,26 +3,32 @@
 import os
 from os.path import split, join
 import binascii
-import argparse
 import time
 import subprocess
 import warnings
 import sys
 import tempfile
+import pkg_resources
 
 import serial
 from google.protobuf.internal.encoder import _VarintBytes
 from google.protobuf import json_format
 import yaml
 
-import upload
+from olfactometer import upload
 
 in_docker = 'OLFACTOMETER_IN_DOCKER' in os.environ
 this_script_dir = split(__file__)[0]
 project_root = split(this_script_dir)[0]
+
+# TODO need to specify path to .proto file when this is installed as a script
+# (probably need to put it in some findable location using setuptools...)
+# (i'm just going to try 'python -m <...>' syntax for running scripts for now)
+
 # The build process handles this in the Docker case. If the code would changes
 # (which can only happen through a build) it would trigger protoc compilation as
 # part of the build.
+import ipdb; ipdb.set_trace()
 if not in_docker:
     # TODO only do this if proto_file has changed since the python outputs have
     proto_file = join(project_root, 'olf.proto')
@@ -42,8 +48,7 @@ if not in_docker:
 # TODO is pb2 suffix indication i'm not using the version i want?
 # syntax was version 3, and the generated code seems to acknowledge that...
 
-# Importing this after regenerating Python code with subprocess above.
-import olf_pb2
+from olfactometer import olf_pb2
 
 
 if in_docker:
@@ -319,12 +324,12 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 
 
 def main(config_file, port='/dev/ttyACM0', do_upload=False, ignore_ack=False,
-    verbose=False):
+    try_parse=False, verbose=False):
 
     if do_upload:
         # TODO save file modification time at upload and check if it has changed
         # before re-uploading with this flag... (just to save program memory
-        # life...)
+        # life...) (docker couldn't use...)
 
         # TODO maybe refactor back and somehow have a new section of argparser
         # filled in without flags here, indicating they are upload specific
@@ -334,18 +339,38 @@ def main(config_file, port='/dev/ttyACM0', do_upload=False, ignore_ack=False,
         # non-zero exit status, stopping further steps here, as intended.
         upload.main(port=port)
 
+    if in_docker and config_file is not None:
+        raise ValueError('passing filenames to docker currently not supported. '
+            'instead, redirect stdin from that file. see README for examples.'
+        )
+
     all_required_data = load(config_file)
     settings = all_required_data.settings
     pin_sequence = all_required_data.pin_sequence
+
+    # TODO TODO maybe do validation of inputs here?
+    # - settings.no_ack should probably not be set
+    # - (if we have data on which pins are reserved on this arduino)
+    #   check that no pins are reserved (or at least check pins in sequence
+    #   aren't specified for some other purpose)
+    # - check range on pin numbers
+    # - check follow_... is True or not set
+    # - no zero length pinsequences or pingroups
+    # - maybe err / warn if length of pin groups are not all the same?
+    # TODO TODO parse max_count of all fields in olf.options and check inputs
+    # are within those length limits
 
     if ignore_ack:
         warnings.warn('ignore_ack should only be used for debugging')
         # Default is False
         settings.no_ack = True
 
-    if verbose:
+    if verbose or try_parse:
         print('Config data:')
         print(all_required_data)
+
+    if try_parse:
+        sys.exit()
 
     baud_rate = parse_baud_from_sketch()
     print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
@@ -380,51 +405,4 @@ def main(config_file, port='/dev/ttyACM0', do_upload=False, ignore_ack=False,
                 except ValueError as e:
                     print(e)
                     print(line)
-
-
-if __name__ == '__main__':
-    # TODO try to refactor to inherit / share (at least some?) command line
-    # arguments with upload.py ?
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-u', '--upload', action='store_true', default=False,
-        help='also uploads Arduino code before running'
-    )
-    # TODO just detect? or still have this as an option? maybe have on default,
-    # and detect by default? (might not be very easy to detect with docker,
-    # at least not without using privileged mode as opposed to just passing one
-    # specific port... https://stackoverflow.com/questions/24225647 )
-    # maybe just use privileged though?
-    parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
-        help='port the Arduino is connected to. '
-        'For uploading and communication.'
-    )
-    parser.add_argument('-v', '--verbose', action='store_true', default=False)
-    # TODO maybe add arduino config parameter to ask the arduino not to send
-    # msgnum acks in this case? (which would clutter the output)
-    parser.add_argument('-i', '--ignore-ack', action='store_true',
-        default=False, help='ignores acknowledgement message #s arduino sends. '
-        'makes viewing all debug prints easier, as no worry they will interfere'
-        ' with receipt of message number.'
-    )
-    '''
-    if not in_docker:
-        parser.add_argument('config_file', type=str, help='.json/.yaml file '
-            'containing all required data. see `load` function.'
-        )
-    '''
-    parser.add_argument('config_file', type=str, nargs='?', default=None,
-        help='.json/.yaml file containing all required data. see `load` '
-        'function.'
-    )
-    args = parser.parse_args()
-
-    config_file = args.config_file
-    port = args.port
-    do_upload = args.upload
-    ignore_ack = args.ignore_ack
-    verbose = args.verbose
-
-    main(config_file, port=port, do_upload=do_upload, ignore_ack=ignore_ack,
-        verbose=verbose
-    )
 

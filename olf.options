@@ -1,17 +1,16 @@
 
-# With this settings, the pins will be decoded into a fixed length array by
-# default, rather than needing a callback defined.
-# TODO maybe up to ~256?
-PinSequence.pins max_count:128
-
 # From source: "int_size setting will override the number of bits, but keep the
 # type otherwise. E.g. uint32 + IS_8 => uint8_t"
-PinSequence.pins int_size:IS_8
+PinGroup.pins int_size:IS_8
 
-# Seems to be a static array without this as well, and I'm not sure I have a
-# representation of how many pins are actually supposed to be in the sequence
-# if this is set, so not using for now.
-#PinSequence.pins fixed_count:true
+# This will be one limit on the maximum number of concurrently switched pins
+# (excluding pins managed independently, like `balance_pin` and similar).
+# With this settings, the pins in each group will be decoded into a fixed length
+# array by default, rather than needing a callback defined.
+PinGroup.pins max_count:8
+
+# TODO 256?
+PinSequence.pin_groups max_count:128
 
 # TODO look in to msgid if useful for picking one of two requests that might
 # arrive at a particular time (status request vs pin sequence, maybe?)

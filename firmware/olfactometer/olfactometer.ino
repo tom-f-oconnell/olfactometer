@@ -239,7 +239,19 @@ void external_timing_isr() {
         detachInterrupt(external_timing_interrupt);
         return;
     }
-    digitalWrite(pin_seq.pins[pin_seq_idx], curr_state);
+
+    // TODO maybe store a group that persists across ISR runs, that only this
+    // ISR uses, and that udpates whenever pin_seq_idx changes?
+    // (or just make it volatile and update in main loop, which i think might
+    // already be checking something equivalent?)
+    // (should save a tiny bit of time...)
+
+    // TODO need to use a pointer here?
+    PinGroup group = pin_seq.pin_groups[pin_seq_idx];
+    // uint8_t max >> 8 (max pins_count defined in olf.options)
+    for (uint8_t i=0; i<group.pins_count; i++) {
+        digitalWrite(group.pins[pin_seq_idx], curr_state);
+    }
     // TODO support disabling this! / changing default state
     digitalWrite(balance_pin, curr_state);
     if (enable_timing_output) {
@@ -250,16 +262,29 @@ void external_timing_isr() {
     }
     last_state = curr_state;
     // TODO maybe move this into main loop (to make isr a tiny bit faster...)?
-    if (pin_seq_idx == pin_seq.pins_count) {
+    if (pin_seq_idx == pin_seq.pin_groups_count) {
         detachInterrupt(external_timing_interrupt);
     }
 }
 
+void print_pin_group(PinGroup *group) {
+    uint8_t pin;
+    for (uint8_t i=0; i<group->pins_count; i++) {
+        pin = group->pins[i];
+        Serial.print(pin);
+        if (i < group->pins_count - 1) {
+          Serial.print(",");
+        }
+    }
+}
+
 // TODO maybe somehow check that this is consistent w/ type of values defined in
-// olf.options?
+// olf.options? (or define it in arduino compilation args, maybe just leaving it
+// undefined otherwise, and then parse from *.options in python, the same way
+// i'm planning on doing some of the validation)
 const uint16_t MAX_NUM_PINS = 256;
 // TODO maybe implement this as bitmask instead?
-// TODO want to initialize?
+// TODO does it actually matter if we initialize this (currently do in setup)?
 bool unique_output_pins[MAX_NUM_PINS];
 
 void setup() {
@@ -348,26 +373,34 @@ void setup() {
     decode(&stream, PinSequence_fields, &pin_seq);
 
     // Reading this way depends on olf.options specifying max_count:<x> for
-    // PulseSequence.pins and NOT specifying fixed_count:true (in which case we
-    // would not have the count, I think).
+    // PulseSequence.pin_groups and NOT specifying fixed_count:true (in which
+    // case we would not have the count, I think).
     // uint16_t for `i` because uint8_t would wraparound right before loop
     // termination if max_count == 256, and an array of full length sent.
+    // TODO need to use a pointer here?
+    PinGroup group;
     uint8_t pin;
-    for (uint16_t i=0; i<pin_seq.pins_count; i++) {
-        pin = pin_seq.pins[i];
-        if (pin_is_reserved(pin)) {
-            Serial.print("pin ");
-            Serial.print(pin);
-            Serial.println(" is reserved!");
-            software_reset();
-        }
-        unique_output_pins[pin] = true;
+    for (uint16_t i=0; i<pin_seq.pin_groups_count; i++) {
+        group = pin_seq.pin_groups[i];
         #ifdef DEBUG_PRINTS
         Serial.print("i: ");
         Serial.print(i);
-        Serial.print(", pin_seq.pins[i]: ");
-        Serial.println(pin);
+        Serial.print(", pin_seq.pin_groups[i]: ");
+        print_pin_group(&group);
+        Serial.println();
         #endif
+        for (uint8_t j=0; j<group.pins_count; j++) {
+            pin = group.pins[j];
+            if (pin_is_reserved(pin)) {
+                Serial.print("pin ");
+                Serial.print(pin);
+                Serial.println(" is reserved!");
+                software_reset();
+            }
+            unique_output_pins[pin] = true;
+            #ifdef DEBUG_PRINTS
+            #endif
+        }
     }
 
     #ifdef DEBUG_PRINTS
@@ -411,24 +444,28 @@ void setup() {
 
 int last_isr_count = -1;
 uint8_t pin;
+// TODO should this be a pointer?
+PinGroup group;
 void loop() {
     if (isr_err) {
         Serial.println("ISR error!");
         software_reset();
     }
     if (last_isr_count < isr_count) {
-        pin = pin_seq.pins[pin_seq_idx];
+        group = pin_seq.pin_groups[pin_seq_idx];
         if (isr_count % 2 == 1) {
           Serial.print("trial: ");
           Serial.print(isr_count / 2 + 1);
-          Serial.print(", pin: ");
-          Serial.println(pin);
+          Serial.print(", pin(s): ");
+          print_pin_group(&group);
+          Serial.println();
         }
         #ifdef DEBUG_PRINTS
         Serial.print("pin_seq_idx: ");
         Serial.println(pin_seq_idx);
-        Serial.print("pin_seq.pins[pin_seq_idx]: ");
-        Serial.println(pin);
+        Serial.print("pin_seq.pin_groups[pin_seq_idx]: ");
+        print_pin_group(&group);
+        Serial.println();
         Serial.print("isr_count: ");
         Serial.println(isr_count);
         Serial.print("last_state: ");
@@ -440,7 +477,7 @@ void loop() {
     // TODO maybe wait until next high transition / python closing serial
     // connection? or just stay low? (cause pin 13 flashes in boot loader, so
     // it'll flash in the end of the last trial...)
-    if (pin_seq_idx == pin_seq.pins_count) {
+    if (pin_seq_idx == pin_seq.pin_groups_count) {
         Serial.println("finished");
         software_reset();
     }

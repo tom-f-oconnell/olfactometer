@@ -50,6 +50,13 @@ message Settings {
     bool no_ack = 4;
 }
 
+// Not intending to use this outside of PinSequence, but the syntax seems
+// simpler if I don't define it as a nested message (in *.options and the C++
+// code).
+message PinGroup {
+    repeated uint32 pins = 1;
+}
+
 // TODO TODO TODO change implementation so multiple valves can be triggered at
 // once!
 message PinSequence {
@@ -58,7 +65,8 @@ message PinSequence {
     // TODO maybe i should have another field with the length then?
     // (also so the arduino knows when it's done reading, or executing, if they
     // come in one-by-one...)
-    repeated uint32 pins = 1;
+    repeated PinGroup pin_groups = 1;
+    //repeated uint32 pins = 1;
 }
 
 // NOTE: this is only defined so we can let the Python protobuf library handle
@@ -74,11 +82,14 @@ message AllRequiredData {
 }
 
 // TODO try using gRPC to implement starting of pulse train?
+// (in PulseTiming case)
 
 // TODO maybe add messages for feedback from arduino?
 // ACKs? current state? version info / available pins? error state?
 // maybe an enum to represent current state (READY/BUSY/ERROR[/PAUSED])?
 // (currently doing the ACKs outside protobuf, just like the CRC)
+// TODO or some type of keep alive handshake / message, so arduino can tell
+// when host has disconnected?
 
 // TODO something to represent delays between PulseTiming(s) (~ trials)?
 // or not actually matter?

@@ -5,11 +5,11 @@ import os
 from os.path import join, split, splitext, exists, abspath, realpath
 import glob
 import shutil
-import argparse
 
 
 # TODO TODO force arduino code to be committed before upload, and embed commit
-# hash in arduino code somehow
+# hash in arduino code somehow (either through communication -> EEPROM or 
+# compile in with arduino-cli compiler flag (-D...)
 
 project_root = split(split(abspath(realpath(__file__)))[0])[0]
 sketch_dir = join(project_root, 'firmware/olfactometer')
@@ -35,7 +35,8 @@ def make_arduino_libraries(delete_existing=False):
             src = join(nanopb_dir, f)
             if not exists(src):
                 raise IOError(f'required nanopb file {src} not found. try "git '
-                    'submodule update --init" from project root?'
+                    'submodule update --init" from project root (if nanopb or '
+                    'nanopb-arduino directories are empty)?'
                 )
             os.symlink(src, dst)
 
@@ -152,40 +153,5 @@ def main(port='/dev/ttyACM0', dry_run=False, show_properties=False,
     generate_and_move_protobuf_code()
     upload(dry_run=dry_run, show_properties=show_properties,
         arduino_debug_prints=arduino_debug_prints, verbose=verbose
-    )
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
-        help='port the Arduino is connected to.'
-    )
-    parser.add_argument('-d', '--dry-run', action='store_true', default=False,
-        help='do not actually upload. just compile.'
-    )
-    parser.add_argument('-s', '--show-properties', action='store_true',
-        default=False, help='shows arduino-cli compilation "build properties" '
-        'and exits (without compiling or uploading)'
-    )
-    parser.add_argument('-v', '--verbose', action='store_true', default=False,
-        help='make arduino-cli compilation verbose'
-    )
-    parser.add_argument('-g', '--arduino-debug-prints', action='store_true',
-        default=False, help='compile Arduino code with DEBUG_PRINTS defined. '
-        'Arduino will print more stuff over USB and its code size will increase'
-        ' slightly.'
-    )
-    parser.add_argument('-c', '--clear-libraries', action='store_true',
-        default=False, help='delete and re-create libraries'
-    )
-    args = parser.parse_args()
-
-    main(
-        port=args.port,
-        dry_run=args.dry_run,
-        show_properties=args.show_properties,
-        verbose=args.verbose,
-        arduino_debug_prints=args.arduino_debug_prints,
-        clear_libraries=args.clear_libraries
     )
 
