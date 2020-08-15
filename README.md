@@ -35,10 +35,10 @@ your Arduino.
 
 To upload the code to your Arduino, and run an experiment after:
 ```
-sudo docker run --device=/dev/ttyACM0 -i olfactometer -p /dev/ttyACM0 -u < <config-file>
+sudo docker run --device=/dev/ttyACM0 -i olf -p /dev/ttyACM0 -u < <config-file>
 ```
 
 To just run an experiment:
 ```
-sudo docker run --device=/dev/ttyACM0 -i olfactometer -p /dev/ttyACM0 < <config-file>
+sudo docker run --device=/dev/ttyACM0 -i olf -p /dev/ttyACM0 < <config-file>
 ```

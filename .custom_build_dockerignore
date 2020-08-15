@@ -10,11 +10,12 @@ Dockerfile
 # Can't exclude all *.txt files because we want requirements.txt files
 TODO.txt
 wishlist.txt
-nanopb/**/*.txt
 
-nanopb/docs/
-nanopb/examples/
-nanopb/tools/
+# The first line says to ignore everything in that directory, and the next two
+# lines add exceptions.
+olfactometer/nanopb/*/
+!olfactometer/nanopb/*.h
+!olfactometer/nanopb/*.c
 
-nanopb-arduino/library.json
+olfactometer/nanopb-arduino/library.json
 

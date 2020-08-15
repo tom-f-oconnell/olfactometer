@@ -28,6 +28,12 @@ RUN apt-get update -y && apt-get install protobuf-compiler -y
 WORKDIR /olfactometer
 
 COPY setup_arduino-cli.sh .
+# So this step seems to increase the size from 170MB to 505MB (by far largest)
+# The /root/.arduino15/packages/arduino/tools/avr-gcc directory is itself 215M,
+# which is most of this increment. I'm not sure there's anything in there that I
+# can really delete.
+# Could maybe delete:
+# /room/.arduino/staging (46M) (not sure if even this is worth the risk though)
 RUN ./setup_arduino-cli.sh
 
 # This was nice because changes to code didn't necessarily require installing
@@ -38,12 +44,10 @@ RUN ./setup_arduino-cli.sh
 #COPY *requirements.txt ./
 #RUN pip install -r requirements.txt && pip install -r test_requirements.txt
 
-# TODO TODO any real way to just have changes to setup.py requirements
+# TODO any real way to just have changes to setup.py requirements
 # invalidate the 'pip install .' step, and have changes to the code not trigger.
 # The issue as i see it, is that i think i need to copy all the code before
-# "pip install ."
-# TODO maybe i can initialize the files to be empty, install editable,
-# and overwrite them?
+# "pip install ." (i'm not 100% clear it's not cached in some way...)
 
 # This might also copy the stuff we already copied above, but that's a small
 # price to pay for the simplicity of not explicitly copying everything else,
