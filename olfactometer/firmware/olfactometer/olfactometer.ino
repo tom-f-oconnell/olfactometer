@@ -301,8 +301,8 @@ void print_trial_status(uint16_t trial, PinGroup *group) {
     Serial.println();
 }
 
-void print_finished() {
-    Serial.println("Finished");
+void finish() {
+    Serial.println("Finished (press Ctrl-C)");
     software_reset();
 }
 
@@ -343,11 +343,14 @@ void run_sequence() {
 
         // TODO TODO TODO also implement balance, timing output, and anything
         // else not specific to external (input) timing case here!
-
         busy_wait_us(pre_pulse_us);
+
         digital_write_pin_group(&group, HIGH);
+
         busy_wait_us(pulse_us);
+
         digital_write_pin_group(&group, LOW);
+
         busy_wait_us(post_pulse_us);
     }
     finish();
