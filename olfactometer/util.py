@@ -126,7 +126,7 @@ def load(json_or_yaml_path=None):
 
     Returns an `olf_pb2.AllRequiredData` object.
     """
-    # TODO TODO any way to pass stdin back to interactive input, after (EOF?)?
+    # TODO any way to pass stdin back to interactive input, after (EOF?)?
     # (for interactive stuff during trial, like pausing...) (if not, maybe
     # implement pausing as arduino tracking state and knowing when host
     # disconnects?)
@@ -135,6 +135,11 @@ def load(json_or_yaml_path=None):
         # yet settled on other mechanisms for getting files into Docker.
         print('Reading config from stdin')
         stdin_str = sys.stdin.read()
+
+        if len(stdin_str) == 0:
+            assert in_docker
+            raise IOError('you must use the -i flag with docker run')
+
         if stdin_str.lstrip()[0] == '{':
             suffix = '.json'
         else:
