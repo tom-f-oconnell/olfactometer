@@ -581,3 +581,5 @@ def main(config_file, port='/dev/ttyACM0', do_upload=False, ignore_ack=False,
                     print(e)
                     print(line)
 
+        # TODO have python exit when it gets the 'Finished' line?
+
