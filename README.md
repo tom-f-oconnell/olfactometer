@@ -1,7 +1,7 @@
 
 ### Installation
 Just [install Docker](https://docs.docker.com/get-docker/), and proceed to the 
-`Running`.
+`Running` section below.
 
 
 #### Windows 
@@ -33,8 +33,8 @@ olf -p <COM-port-of-your-Arduino> -u <config-file>
 Save this example configuration to `example.yaml`.
 ```
 settings:
-  # The parameters under this key are for specifying the timing of individual
-  # trials (each with a single pulse from the valve(s)).
+  # The parameters under this key are for specifying the timing of
+  # individual trials (each with a single pulse from the valve(s)).
   # All trials will share this timing.
   # All of these parameters are in units of microseconds.
   timing:
@@ -45,20 +45,24 @@ settings:
     pulse_us: 1000000
 
     # Delay before next trial.
-    # NOTE: the time from offset of the pulse to the onset of the next trial
-    # (if there is one) will be (post_pulse_us + pre_pulse_us)
+    # NOTE: the time from offset of the pulse to the onset of the
+    # next trial (if there is one) will be:
+    # (post_pulse_us + pre_pulse_us)
     post_pulse_us: 9000000
 
-# Example trial structure with 4 trials. If your microcontroller as pin 13
-# connected to the builtin LED (as Arduino Unos and Megas do), running this
-# config will flash that LED once per trial (for 1s each time).
+# Example trial structure with 4 trials. If your microcontroller 
+# has pin 13 connected to the builtin LED (as Arduino Unos and 
+# Megas do), running this config will flash that LED once per trial 
+# (for 1s each time).
 pin_sequence:
   # The rows in this bulleted list happen one after the other.
-  # If the 'timing' key is specified above, each row (i.e. "- pins: ...") will
-  # take (pre_pulse_us + pulse_us + post_pulse_us) microseconds.
+  # If the 'timing' key is specified above, each row
+  # (i.e. "- pins: ...") will take
+  # (pre_pulse_us + pulse_us + post_pulse_us) microseconds.
   pin_groups:
-  # The pins listed in each of these rows will all be concurrently switched
-  # ONCE (LOW for pre_pulse_us -> HIGH for pulse_us -> LOW for post_pulse_us)
+  # The pins listed in each of these rows will all be concurrently 
+  # switched ONCE (LOW for pre_pulse_us -> HIGH for pulse_us ->
+  # LOW for post_pulse_us)
   - pins: [13, 4, 5]
   - pins: [13, 4]
   - pins: [13]
