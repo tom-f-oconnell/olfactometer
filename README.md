@@ -30,7 +30,7 @@ olf -p <COM-port-of-your-Arduino> -u <config-file>
 ```
 
 ### Running
-Save this example configuration to `example.yaml`.
+Copy and paste this example configuration to `example.yaml`.
 ```
 settings:
   # The parameters under this key are for specifying the timing of
