@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from subprocess import Popen, DEVNULL
+from subprocess import Popen, DEVNULL, check_output
 import os
 from os.path import join, split, splitext, exists, abspath, realpath
 import glob
@@ -128,8 +128,37 @@ def make_arduino_sketch_and_libraries(sketch_dir, arduino_lib_dir,
             copy_or_link(src, dst)
 
 
-def upload(sketch_dir, arduino_lib_dir, board='arduino:avr:mega',
-    port='/dev/ttyACM0', build_root=None, dry_run=False, show_properties=False,
+def get_fqbn(port):
+    # This will raise error if command fails.
+    lines = check_output(['arduino-cli', 'board', 'list']).decode().splitlines()
+
+    fqbn = None
+    for line in lines[1:]:
+        line = line.strip()
+        if len(line) == 0:
+            continue
+
+        parts = line.split()
+        curr_port = parts[0]
+        if curr_port == port:
+            fqbn = parts[-2].strip()
+            core = parts[-1].strip()
+
+    if fqbn is None:
+        raise RuntimeError(f'board at port {port} not found')
+
+    print(f'Detected an {fqbn} on port {port}')
+
+    # TODO maybe also parse list of cores and check core of board is supported
+    # (mostly so i could also consider installing the missing core at runtime,
+    # right before upload)
+
+    return fqbn
+
+
+# TODO maybe thread fqbn through args so arduino-cli lookup not always needed
+def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
+    build_root=None, dry_run=False, show_properties=False,
     arduino_debug_prints=False, verbose=False):
 
     # TODO maybe just like arduino-cli handle the build + build_cache_path now?
@@ -153,7 +182,22 @@ def upload(sketch_dir, arduino_lib_dir, board='arduino:avr:mega',
     if exists(build_cache_path):
         shutil.rmtree(build_cache_path)
 
-    cmd = (f'arduino-cli compile -b {board} {sketch_dir} '
+    if not (dry_run or show_properties):
+        # TODO i managed to get the same "...Device or resource busy
+        # ioctl("TIOCMGET"): Inappropriate ioctl for device" error when i just
+        # plugged the arduino in here...
+
+        # This is because arduino-cli hangs for a while (maybe indefinitely?)
+        # if it does not exist.
+        if not exists(port):
+            raise IOError(f'port {port} does not exist. '
+                'is the Arduino connected?'
+            )
+
+        if fqbn is None:
+            fqbn = get_fqbn(port)
+
+    cmd = (f'arduino-cli compile -b {fqbn} {sketch_dir} '
         f'--libraries {arduino_lib_dir} '
         f'--build-path {build_path} --build-cache-path {build_cache_path}'
     )
@@ -172,17 +216,6 @@ def upload(sketch_dir, arduino_lib_dir, board='arduino:avr:mega',
     upload_args = f' -u -t -p {port}'
     if not (dry_run or show_properties):
         cmd += upload_args
-
-        # TODO i managed to get the same "...Device or resource busy
-        # ioctl("TIOCMGET"): Inappropriate ioctl for device" error when i just
-        # plugged the arduino in here...
-
-        # This is because arduino-cli hangs for a while (maybe indefinitely?)
-        # if it does not exist.
-        if not exists(port):
-            raise IOError(f'port {port} does not exist. '
-                'is the Arduino connected?'
-            )
 
     print(cmd)
 

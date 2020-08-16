@@ -43,6 +43,21 @@ fi
 # TODO should i pin particular versions of arduino-cli stuff (here? in terms of
 # which versions install.sh I use? both?)
 
+
+# TODO TODO TODO maybe i should make another endpoint (or python wrapper around
+# -> command line args in one of current cmds / endpoints) so people can install
+# more of these at runtime? would that work? maybe with extra args to persist
+# the data if they need? or just always need to do it in same step / set up
+# something like a volume?
+# TODO TODO maybe (if would be uploaded) do a "arduino-cli board list" ->
+# parse second to last col (FQBN) and check prefix matches one of the installed
+# cores from "... core list"? (that prefix match appropriate?)
+# (actually it seems the last column "Core" is already what i want...)
+
 arduino-cli core update-index
+
+# Not 100% clear on why my Mega (MEGA2560) doesn't fall under the
+# arduino:megaavr core instead, but with only that core installed, arduino-cli
+# build fails.
 arduino-cli core install arduino:avr
 
