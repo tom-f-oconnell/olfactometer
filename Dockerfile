@@ -27,6 +27,10 @@ RUN apt-get update -y && apt-get install protobuf-compiler -y
 # assumptions in setup_arduino-cli.sh are satisfied.
 WORKDIR /olfactometer
 
+# TODO TODO honestly, should probably just compile to [all of?] my planned
+# targets in advance?
+# TODO maybe find some avr-gcc docker base image? (though probably couldn't use
+# arduino-cli then... but maybe that's for the best)
 COPY setup_arduino-cli.sh .
 # So this step seems to increase the size from 170MB to 505MB (by far largest)
 # The /root/.arduino15/packages/arduino/tools/avr-gcc directory is itself 215M,

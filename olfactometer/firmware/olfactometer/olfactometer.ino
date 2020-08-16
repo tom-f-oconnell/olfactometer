@@ -208,6 +208,13 @@ bool pin_is_reserved(uint8_t pin) {
     return false;
 }
 
+inline void digital_write_pin_group(PinGroup *group, bool state) {
+    // uint8_t max >> 8 (max pins_count defined in olf.options)
+    for (uint8_t i=0; i<group->pins_count; i++) {
+        digitalWrite(group->pins[i], state);
+    }
+}
+
 volatile uint8_t pin_seq_idx = 0;
 volatile bool isr_err = false;
 // TODO does this need to be volatile if ONLY the ISR uses it?
@@ -216,7 +223,12 @@ volatile bool last_state = LOW;
 
 volatile uint8_t isr_count = 0;
 
-// TODO maybe time this function to see if it's a reasonable length?
+// TODO TODO time this function to see if it's a reasonable length?
+// (and what *is* a reasonable length? is there really any other code that can't
+// be interruted by this?)
+// TODO use a long loop in here (timed outside of an isr, where millis() and the
+// like can be relied upon, for reference?) to check that the isr_err flag
+// actually is set appropriately!
 void external_timing_isr() {
     // Reading the pin to determine whether it was a RISING or FALLING edge
     // from: https://forum.arduino.cc/index.php?topic=521547.0
@@ -246,14 +258,17 @@ void external_timing_isr() {
     // already be checking something equivalent?)
     // (should save a tiny bit of time...)
 
-    // TODO need to use a pointer here?
+    // TODO does pin_seq need to be marked volatile just b/c this isr READS it?
+    // TODO TODO TODO seems like yes. fix!! (and look for others to fix)
+    // https://stackoverflow.com/questions/55278198
+    // (but maybe since pin_seq is only read before interrupts are enabled
+    // and not updated again until after, it's actually ok??)
     PinGroup group = pin_seq.pin_groups[pin_seq_idx];
-    // uint8_t max >> 8 (max pins_count defined in olf.options)
-    for (uint8_t i=0; i<group.pins_count; i++) {
-        digitalWrite(group.pins[pin_seq_idx], curr_state);
-    }
+    digital_write_pin_group(&group, curr_state);
+
     // TODO support disabling this! / changing default state
     digitalWrite(balance_pin, curr_state);
+
     if (enable_timing_output) {
         digitalWrite(timing_output_pin, curr_state);
     }
@@ -276,6 +291,66 @@ void print_pin_group(PinGroup *group) {
           Serial.print(",");
         }
     }
+}
+
+void print_trial_status(uint16_t trial, PinGroup *group) {
+    Serial.print("trial: ");
+    Serial.print(trial);
+    Serial.print(", pin(s): ");
+    print_pin_group(group);
+    Serial.println();
+}
+
+void print_finished() {
+    Serial.println("Finished");
+    software_reset();
+}
+
+// TODO make sense to be inline? i was just hoping to reduce function call
+// overhead, and it's presumed timing impact
+// I'm pretty sure this function is wraparound-safe.
+unsigned long last_change_us = micros();
+inline void busy_wait_us(unsigned long interval_us) {
+    while (micros() - last_change_us < interval_us);
+    last_change_us = micros();
+}
+
+// TODO TODO compare timing accuracy with w/o some interrupt based
+// implementation (would timer interrupts really help? when?)
+void run_sequence() {
+    // TODO TODO was the casting the serial.prints did with the same rhs values
+    // actually necessary (needed here?)?
+    unsigned long pre_pulse_us = settings.control.timing.pre_pulse_us;
+    unsigned long pulse_us = settings.control.timing.pulse_us;
+    unsigned long post_pulse_us = settings.control.timing.post_pulse_us;
+    #ifdef DEBUG_PRINTS
+    // TODO just do some tests that are near uint32 max (unsigned long) to check
+    // i'm not messing some implicit conversion
+    Serial.print("pre_pulse_us: ");
+    Serial.print(pre_pulse_us);
+    Serial.print(", pulse_us: ");
+    Serial.print(pulse_us);
+    Serial.print(", post_pulse_us: ");
+    Serial.println(post_pulse_us);
+    #endif
+
+    PinGroup group;
+    uint8_t pin;
+    for (uint16_t i=0; i<pin_seq.pin_groups_count; i++) {
+        group = pin_seq.pin_groups[i];
+
+        print_trial_status(i + 1, &group);
+
+        // TODO TODO TODO also implement balance, timing output, and anything
+        // else not specific to external (input) timing case here!
+
+        busy_wait_us(pre_pulse_us);
+        digital_write_pin_group(&group, HIGH);
+        busy_wait_us(pulse_us);
+        digital_write_pin_group(&group, LOW);
+        busy_wait_us(post_pulse_us);
+    }
+    finish();
 }
 
 // TODO maybe somehow check that this is consistent w/ type of values defined in
@@ -355,12 +430,11 @@ void setup() {
         Serial.println("settings.control == timing");
 
         Serial.print("pre_pulse_us: ");
-        // TODO was this casting actually necessary?
-        Serial.print((unsigned long) settings.control.timing.pre_pulse_us);
+        Serial.print(settings.control.timing.pre_pulse_us);
         Serial.print(", pulse_us: ");
-        Serial.print((unsigned long) settings.control.timing.pulse_us);
+        Serial.print(settings.control.timing.pulse_us);
         Serial.print(", post_pulse_us: ");
-        Serial.println((unsigned long) settings.control.timing.post_pulse_us);
+        Serial.println(settings.control.timing.post_pulse_us);
         #endif
 
     } else {
@@ -377,7 +451,6 @@ void setup() {
     // case we would not have the count, I think).
     // uint16_t for `i` because uint8_t would wraparound right before loop
     // termination if max_count == 256, and an array of full length sent.
-    // TODO need to use a pointer here?
     PinGroup group;
     uint8_t pin;
     for (uint16_t i=0; i<pin_seq.pin_groups_count; i++) {
@@ -432,21 +505,24 @@ void setup() {
         attachInterrupt(external_timing_interrupt, external_timing_isr, CHANGE);
     }
 
-    #ifdef DEBUG_PRINTS
-    Serial.println("end of setup");
-    #endif
+    if (! follow_hardware_timing) {
+        run_sequence();
+    }
+
     // for testing ISR with just one arduino (connect 3<->external_timing_pin)
     /*
     delay(3000);
     pinMode(3, OUTPUT);
     */
+    #ifdef DEBUG_PRINTS
+    Serial.println("end of setup");
+    #endif
 }
 
 int last_isr_count = -1;
-uint8_t pin;
-// TODO should this be a pointer?
-PinGroup group;
 void loop() {
+    PinGroup group;
+
     if (isr_err) {
         Serial.println("ISR error!");
         software_reset();
@@ -454,11 +530,7 @@ void loop() {
     if (last_isr_count < isr_count) {
         group = pin_seq.pin_groups[pin_seq_idx];
         if (isr_count % 2 == 1) {
-          Serial.print("trial: ");
-          Serial.print(isr_count / 2 + 1);
-          Serial.print(", pin(s): ");
-          print_pin_group(&group);
-          Serial.println();
+          print_trial_status(isr_count / 2 + 1, &group);
         }
         #ifdef DEBUG_PRINTS
         Serial.print("pin_seq_idx: ");
@@ -475,11 +547,12 @@ void loop() {
         last_isr_count = isr_count;
     }
     // TODO maybe wait until next high transition / python closing serial
-    // connection? or just stay low? (cause pin 13 flashes in boot loader, so
-    // it'll flash in the end of the last trial...)
+    // connection (doesn't seem to be a great way to detect latter, unless
+    // sending a heartbeat or something from the host)? or just stay low? (cause
+    // pin 13 flashes in boot loader, so it'll flash in the end of the last
+    // trial...)
     if (pin_seq_idx == pin_seq.pin_groups_count) {
-        Serial.println("finished");
-        software_reset();
+        finish();
     }
     // for testing ISR with just one arduino (connect 3<->external_timing_pin)
     /*

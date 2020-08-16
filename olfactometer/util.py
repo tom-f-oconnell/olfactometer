@@ -94,6 +94,7 @@ nanopb_options_lines = [x for x in lines if len(x) > 0 and not x[0] == '#']
 # TODO maybe try nesting the PinGroup object into the other message type, and
 # see if that changes the json syntax? (would have to adapt C code a bit though,
 # AND might prevent nanopb from optimizing as much from the *.options)
+# TODO TODO and also probably allow seconds / ms units for PulseTiming fields
 
 def load_json(json_filelike, message=None):
     if message is None:
@@ -178,6 +179,9 @@ def max_count(name):
     raise ValueError(f'no lines starting with name={name}')
 
 
+# TODO TODO figure out max pulse feature size (micros overflow period, i think,
+# divided by 2 [- 1?]?). check none of  [pre/post_]pulse_us / pulse_us are
+# longer
 def validate_settings(settings, **kwargs):
     if settings.WhichOneof('control') == 'follow_hardware_timing':
         if not settings.follow_hardware_timing:
@@ -333,6 +337,10 @@ def parse_baud_from_sketch():
     baud_rate = int(parts[0])
     return baud_rate
 
+
+# TODO TODO also have python parse the "trial: <n>, pins(s): ..." messages from
+# arduino (when sent?) and check that timing is at least roughly right, in the
+# pulse timing case
 
 # Using an 8 bit, unsigned type to represent this on the Arduino side.
 MAX_MSG_NUM = 255
@@ -553,7 +561,7 @@ def main(config_file, port='/dev/ttyACM0', do_upload=False, ignore_ack=False,
         write_message(ser, pin_sequence, ignore_ack=ignore_ack, verbose=verbose)
 
         if settings.follow_hardware_timing:
-            print('Ready')
+            print('Ready (waiting for hardware triggers)')
         else:
             print('Starting')
 

@@ -71,3 +71,6 @@
   - python struct? maybe defeats the purpose...
   - are there any libraries that support small types like python struct can?
 
+- run arduino code through valgrid (and setup olf-upload flags for that) and any
+  other useful detectors of potential code problems
+
