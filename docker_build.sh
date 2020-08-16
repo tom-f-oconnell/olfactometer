@@ -47,10 +47,11 @@ git submodule foreach -q "${GIT_LS_CMD}"' | xargs printf "$path//%s\n"' | \
 
 # Calling it 'olf' for now, to be consistent w/ main script installed via pip.
 # (and also it's shorter...)
-TAG_NAME="olf"
-#TAG_NAME="$(basename `pwd`)"
+DOCKER_USERNAME="tom0connell"
+#TAG_NAME="olf"
+TAG_NAME="$(basename `pwd`)"
 
 # The ':latest' part of the tag (the version?) seems to be filled in
 # automatically (as 'latest') if not specified.
-sudo docker build -t "${TAG_NAME}" .
+sudo docker build -t "${DOCKER_USERNAME}/${TAG_NAME}" .
 
