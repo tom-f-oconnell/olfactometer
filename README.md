@@ -22,7 +22,7 @@ configurations, and there does not seem to be a workaround. See
 
 It should still be possible to follow the `Development installation`
 instructions to get this working on Windows, but you will need to figure out how
-to install `protoc` yourself.
+to install `protoc` and `arduino-cli` yourself.
 
 
 ### Running
@@ -108,6 +108,16 @@ for you for some reason. You must verify that things are working as you intend.
 ```
 git clone https://github.com/tom-f-oconnell/olfactometer
 cd olfactometer
+```
+
+If you are on Ubuntu 18.04, you should be able to install all the necessary
+dependencies with this command. This will probably not work on other systems.
+```
+./scripts/install_18.04_deps.sh
+```
+
+After you have installed the necessary dependencies:
+```
 # (make and activate a virtual environment here, if you would like)
 pip install .
 ```
@@ -130,5 +140,5 @@ olf -p <COM-port-of-your-Arduino> -u <config-file>
 Add instructions for how to interface with this.
 - one example using subprocess around the docker installed version
   (and test that it can work OK from non-root python processes...)
-- 18.04 specific instructions on getting the pip installed version
-  working, and using "from olfactometer import main"
+- and using "from olfactometer import main" (assuming dev install)
+

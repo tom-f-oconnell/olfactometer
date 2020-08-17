@@ -1,17 +1,28 @@
 #!/usr/bin/env bash
 
-# TODO also add dialout stuff (and prompt user to relog / restart)...
-# (if run as non-root? or use an envvar set in Dockerfile to exclude in docker
-# case?)
-
-# (commented because i don't want docker build running this)
 if [ -z "${OLFACTOMETER_IN_DOCKER}" ]; then
+    # This seems to be one of the better methods for finding the user that
+    # called sudo / su (or just providing current user otherwise)
+    # https://stackoverflow.com/questions/4598001
+    orig_user=`logname`
+
+    # https://stackoverflow.com/questions/18431285
+    # (a few comments on above SO post answer say there are some edge cases in
+    # this method, but doubt they will matter...)
+    # This if statement is really just for the restart prompt, as adduser is
+    # already idempotent.
+    if ! getent group dialout | grep -q "\b${orig_user}\b"; then
+        # No need in the docker base image I use
+        sudo adduser $orig_user dialout
+        echo "Please restart to ensure user ${orig_user} is in dialout group!!!"
+    fi
+
     mkdir ~/arduino-cli
     cd ~/arduino-cli
 fi
 
 # TODO just replace the curl line with something equivalent that doesn't use
-# curl?
+# curl (something generally pre installed)?
 if ! [ -x "$(command -v curl)" ]; then
     if [ -z "${OLFACTOMETER_IN_DOCKER}" ]; then
         # This case will run if the above env var is undefined.
@@ -42,7 +53,6 @@ fi
 
 # TODO should i pin particular versions of arduino-cli stuff (here? in terms of
 # which versions install.sh I use? both?)
-
 
 # TODO TODO TODO maybe i should make another endpoint (or python wrapper around
 # -> command line args in one of current cmds / endpoints) so people can install
