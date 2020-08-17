@@ -60,4 +60,6 @@ arduino-cli core update-index
 # arduino:megaavr core instead, but with only that core installed, arduino-cli
 # build fails.
 arduino-cli core install arduino:avr
+# "Arduino Nano Every" that Han tested it with needed this core.
+arduino-cli core install arduino:megaavr
 
