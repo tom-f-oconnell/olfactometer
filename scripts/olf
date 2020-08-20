@@ -21,6 +21,12 @@ if __name__ == '__main__':
         help='port the Arduino is connected to. '
         'For uploading and communication.'
     )
+    parser.add_argument('-f', '--fqbn', action='store', default=None,
+        help='Fully Qualified Board Name, e.g.: arduino:avr:uno. corresponds to'
+        ' arduino-cli -b/--fqbn. mainly for testing compilation with other '
+        'boards. your connected board should be detected without needing to '
+        'pass this.'
+    )
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
     parser.add_argument('-t', '--try-parse', action='store_true', default=False,
         help='exit after attempting to parse config'
@@ -38,11 +44,12 @@ if __name__ == '__main__':
 
     config_file = args.config_file
     port = args.port
+    fqbn = args.fqbn
     do_upload = args.upload
     ignore_ack = args.ignore_ack
     verbose = args.verbose
     try_parse = args.try_parse
 
-    main(config_file, port=port, do_upload=do_upload, ignore_ack=ignore_ack,
-        try_parse=try_parse, verbose=verbose
+    main(config_file, port=port, fqbn=fqbn, do_upload=do_upload,
+        ignore_ack=ignore_ack, try_parse=try_parse, verbose=verbose
     )

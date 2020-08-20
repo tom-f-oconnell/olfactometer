@@ -147,6 +147,14 @@ def get_fqbn(port):
     if fqbn is None:
         raise RuntimeError(f'board at port {port} not found')
 
+    # Han got this with a arduino:avr:nano:cpu=atmega328 on /dev/ttyUSB0
+    if fqbn == 'Unknown':
+        raise RuntimeError('arduino-cli is not detecting FQBN for board at '
+            f'port {port}. lookup what arduino-cli FQBN should be for your '
+            'board, and pass with -f'
+        )
+    assert ':' in fqbn, 'fqbn seemingly not parsed correctly'
+
     print(f'Detected an {fqbn} on port {port}')
 
     # TODO maybe also parse list of cores and check core of board is supported

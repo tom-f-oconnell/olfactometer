@@ -514,8 +514,13 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
             print(f'Time to msg num ack: {time_to_msgnum_ack:.3f}')
 
 
-def main(config_file, port='/dev/ttyACM0', do_upload=False, ignore_ack=False,
-    try_parse=False, verbose=False):
+# TODO TODO maybe add a block=True flag to allow (w/ =False) to return, to not
+# need to start this function in a new thread or process when trying to run the
+# olfactometer and other code from one python script. not needed as a command
+# line arg, cause already a separate process at that point.
+# (or would this just make debugging harder, w/o prints from arduino?)
+def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
+    ignore_ack=False, try_parse=False, verbose=False):
 
     if do_upload:
         # TODO save file modification time at upload and check if it has changed
@@ -528,7 +533,7 @@ def main(config_file, port='/dev/ttyACM0', do_upload=False, ignore_ack=False,
 
         # This raises a RuntimeError if the compilation / upload returns a
         # non-zero exit status, stopping further steps here, as intended.
-        upload.main(port=port)
+        upload.main(port=port, fqbn=fqbn)
 
     if in_docker and config_file is not None:
         raise ValueError('passing filenames to docker currently not supported. '
@@ -588,5 +593,5 @@ def main(config_file, port='/dev/ttyACM0', do_upload=False, ignore_ack=False,
                     print(e)
                     print(line)
 
-        # TODO have python exit when it gets the 'Finished' line?
+        # TODO have python exit when it gets the 'Finished'... line?
 
