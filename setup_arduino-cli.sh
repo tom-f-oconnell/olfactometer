@@ -6,6 +6,9 @@ if [ -z "${OLFACTOMETER_IN_DOCKER}" ]; then
     # https://stackoverflow.com/questions/4598001
     orig_user=`logname`
 
+    # TODO probably just exit if USER is root (or other indication)
+    # since we set
+
     # https://stackoverflow.com/questions/18431285
     # (a few comments on above SO post answer say there are some edge cases in
     # this method, but doubt they will matter...)
@@ -17,6 +20,8 @@ if [ -z "${OLFACTOMETER_IN_DOCKER}" ]; then
         echo "Please restart to ensure user ${orig_user} is in dialout group!!!"
     fi
 
+    # TODO TODO might want to change '~/' to /home/$orig_user
+    # (if i allow script to be run with sudo / as root, in non-docker case)
     mkdir ~/arduino-cli
     cd ~/arduino-cli
 fi
@@ -37,7 +42,14 @@ fi
 # subdir it creates on your path.
 curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
 
-if ! [ -z "${OLFACTOMETER_IN_DOCKER}" ]; then
+if [ -z "${OLFACTOMETER_IN_DOCKER}" ]; then
+    RC_LINE='export PATH="$PATH:$HOME/arduino-cli/bin"'
+    # TODO TODO might want to change '~/' to /home/$orig_user
+    # (if i allow script to be run with sudo / as root, in non-docker case)
+    # https://stackoverflow.com/questions/3557037
+    grep -qxF "$RC_LINE" ~/.bashrc || echo "$RC_LINE" >> ~/.bashrc
+    eval "$RC_LINE"
+else
     # TODO maybe just change path? at least one guy seemed to think that was
     # less ideal for some reasons: https://stackoverflow.com/questions/27093612
     # and answers describing how to change path were unclear on how it interacts
