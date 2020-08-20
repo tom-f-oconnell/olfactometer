@@ -194,6 +194,9 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
                 'is the Arduino connected?'
             )
 
+        # TODO maybe do this in dry_run / show_properties cases too?
+        # otherwise, should i ValueError if fqbn not explicitly passed in those
+        # cases?
         if fqbn is None:
             fqbn = get_fqbn(port)
 
@@ -252,7 +255,7 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
         raise RuntimeError('compilation or upload failed')
 
 
-def main(port='/dev/ttyACM0', dry_run=False, show_properties=False,
+def main(port='/dev/ttyACM0', fqbn=None, dry_run=False, show_properties=False,
     arduino_debug_prints=False, build_root=None, use_symlinks=True,
     verbose=False):
 
@@ -277,7 +280,7 @@ def main(port='/dev/ttyACM0', dry_run=False, show_properties=False,
     )
 
     upload(sketch_dir, arduino_lib_dir, build_root=build_root,
-        dry_run=dry_run, show_properties=show_properties,
+        port=port, fqbn=fqbn, dry_run=dry_run, show_properties=show_properties,
         arduino_debug_prints=arduino_debug_prints, verbose=verbose
     )
     if td_tmp_build_dir is not None:

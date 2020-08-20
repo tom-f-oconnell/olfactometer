@@ -20,6 +20,12 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', action='store_true', default=False,
         help='make arduino-cli compilation verbose'
     )
+    parser.add_argument('-f', '--fqbn', action='store', default=None,
+        help='Fully Qualified Board Name, e.g.: arduino:avr:uno. corresponds to'
+        ' arduino-cli -b/--fqbn. mainly for testing compilation with other '
+        'boards. your connected board should be detected without needing to '
+        'pass this.'
+    )
     parser.add_argument('-b', '--build-root', action='store', default=None,
         help='directory to create Arduino sketch and libraries under, '
         'for inspection during troubleshooting. default is a temporary '
@@ -41,6 +47,7 @@ if __name__ == '__main__':
 
     main(
         port=args.port,
+        fqbn=args.fqbn,
         dry_run=args.dry_run,
         show_properties=args.show_properties,
         arduino_debug_prints=args.arduino_debug_prints,

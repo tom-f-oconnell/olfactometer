@@ -7,10 +7,23 @@ PinGroup.pins int_size:IS_8
 # (excluding pins managed independently, like `balance_pin` and similar).
 # With this settings, the pins in each group will be decoded into a fixed length
 # array by default, rather than needing a callback defined.
-PinGroup.pins max_count:8
+PinGroup.pins max_count:5
 
-# TODO 256?
-PinSequence.pin_groups max_count:128
+# TODO some way to make this platform dependent?
+# TODO maybe just leave this to command line args to nanopb generator?
+# (+ max_count above, probably)
+# maybe just have two .options files, and select one based on the target
+# platform? (b/c Unos don't have enough memory for 128 x 8 x uint8 it seems,
+# even though Megas do) (would need to parse the appropriate one when validating
+# too)
+# Even with 64 here (x 8 above), compiling for and Uno, I get this warning:
+# Low memory available, stability problems may occur.
+# I assume this is just / mainly an issue if malloc is used? Are there builtin
+# Arduino things using dynamic memory allocation? Because I don't think any of
+# my code does...
+# 40 x 5 just barely avoids the low memory warning, though it might still be an
+# issue (if it ever was)
+PinSequence.pin_groups max_count:40
 
 # TODO look in to msgid if useful for picking one of two requests that might
 # arrive at a particular time (status request vs pin sequence, maybe?)
