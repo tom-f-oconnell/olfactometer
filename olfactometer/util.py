@@ -188,6 +188,13 @@ def max_count(name):
 # divided by 2 [- 1?]?). check none of  [pre/post_]pulse_us / pulse_us are
 # longer
 def validate_settings(settings, **kwargs):
+    # 0 = disabled.
+    if settings.balance_pin != 0:
+        validate_pin(balance_pin)
+
+    if settings.timing_output_pin != 0:
+        validate_pin(timing_output_pin)
+
     if settings.WhichOneof('control') == 'follow_hardware_timing':
         if not settings.follow_hardware_timing:
             raise ValueError('follow_hardware_timing must be True if using it '

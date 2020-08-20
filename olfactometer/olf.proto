@@ -36,11 +36,12 @@ message Settings {
         bool follow_hardware_timing = 1;
         PulseTiming timing = 2;
     }
-    bool enable_timing_output = 3;
+    uint32 balance_pin = 3;
+    uint32 timing_output_pin = 4;
     // would need at least --experimental_allow_proto3_optional, and not sure
     // that would work + w/ nanopb
     //optional bool no_ack = 4;
-    bool no_ack = 4;
+    bool no_ack = 5;
 }
 
 // Not intending to use this outside of PinSequence, but the syntax seems

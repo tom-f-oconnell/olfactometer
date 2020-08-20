@@ -1,4 +1,9 @@
 
+# TODO figure out how to get these variables recognized. generator currently
+# complains about them if uncommented
+#Setings.balance_pin int_size:IS_8
+#Setings.timing_output_pin int_size:IS_8
+
 # From source: "int_size setting will override the number of bits, but keep the
 # type otherwise. E.g. uint32 + IS_8 => uint8_t"
 PinGroup.pins int_size:IS_8

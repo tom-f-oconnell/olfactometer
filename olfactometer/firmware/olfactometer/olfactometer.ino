@@ -169,20 +169,12 @@ const uint8_t external_timing_interrupt = digitalPinToInterrupt(
   external_timing_pin
 );
 
-// TODO maybe also specify this pin through protobuf protocol
-
+// For each of these pins, 0 = disabled. Can be set in settings.
+// TODO also enable it being high or low by default?
+uint8_t balance_pin = 0;
 // Mirrors pulse timing of currently active valve. For recording timing this
 // firmware produces (without knowing which pin it was pulsing).
-// TODO maybe negate this in the variable name so it can effectively default
-// true?
-bool enable_timing_output = false;
-const uint8_t timing_output_pin = 21;
-
-
-// TODO definitely enable configuration of this on the host side (at runtime).
-// also enable it being high or low by default.
-// TODO TODO also allow disabling this though
-const uint8_t balance_pin = 31;
+uint8_t timing_output_pin = 0;
 
 // TODO TODO also add an optional pin to signal the pin thats getting switched
 // (as before)
@@ -191,13 +183,13 @@ uint8_t reserved_pins[] = {0, 1};
 
 bool pin_is_reserved(uint8_t pin) {
     // TODO support disabling balance pin though...
-    if (pin == balance_pin) {
+    if (balance_pin && pin == balance_pin) {
         return true;
     }
     if (follow_hardware_timing && pin == external_timing_pin) {
         return true;
     }
-    if (enable_timing_output && pin == timing_output_pin) {
+    if (timing_output_pin && pin == timing_output_pin) {
         return true;
     }
     for (uint8_t i=0; i<sizeof reserved_pins/sizeof reserved_pins[0]; i++) {
@@ -266,10 +258,10 @@ void external_timing_isr() {
     PinGroup group = pin_seq.pin_groups[pin_seq_idx];
     digital_write_pin_group(&group, curr_state);
 
-    // TODO support disabling this! / changing default state
-    digitalWrite(balance_pin, curr_state);
-
-    if (enable_timing_output) {
+    if (balance_pin) {
+        digitalWrite(balance_pin, curr_state);
+    }
+    if (timing_output_pin) {
         digitalWrite(timing_output_pin, curr_state);
     }
     if (curr_state == LOW) {
@@ -345,10 +337,22 @@ void run_sequence() {
         // else not specific to external (input) timing case here!
         busy_wait_us(pre_pulse_us);
 
+        if (balance_pin) {
+            digitalWrite(balance_pin, HIGH);
+        }
+        if (timing_output_pin) {
+            digitalWrite(timing_output_pin, HIGH);
+        }
         digital_write_pin_group(&group, HIGH);
 
         busy_wait_us(pulse_us);
 
+        if (balance_pin) {
+            digitalWrite(balance_pin, LOW);
+        }
+        if (timing_output_pin) {
+            digitalWrite(timing_output_pin, LOW);
+        }
         digital_write_pin_group(&group, LOW);
 
         busy_wait_us(post_pulse_us);
@@ -406,7 +410,8 @@ void setup() {
     while (Serial.available() < 1) {};
     decode(&stream, Settings_fields, &settings);
 
-    enable_timing_output = settings.enable_timing_output;
+    balance_pin = settings.balance_pin;
+    timing_output_pin = settings.timing_output_pin;
 
     if (settings.which_control == Settings_follow_hardware_timing_tag) {
         follow_hardware_timing = settings.control.follow_hardware_timing;
@@ -492,7 +497,10 @@ void setup() {
         }
     }
 
-    if (enable_timing_output) {
+    if (balance_pin) {
+        pinMode(balance_pin, OUTPUT);
+    }
+    if (timing_output_pin) {
         pinMode(timing_output_pin, OUTPUT);
     }
 
