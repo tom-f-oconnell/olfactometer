@@ -14,7 +14,7 @@ settings:
     # NOTE: the time from offset of the pulse to the onset of the
     # next trial (if there is one) will be:
     # (post_pulse_us + pre_pulse_us)
-    post_pulse_us: 9000000
+    post_pulse_us: 2000000
 
 # Example trial structure with 4 trials. If your microcontroller 
 # has pin 13 connected to the builtin LED (as Arduino Unos and 

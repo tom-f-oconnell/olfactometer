@@ -6,6 +6,11 @@ from os.path import join, split, splitext, exists, abspath, realpath
 import glob
 import shutil
 import tempfile
+import warnings
+
+import git
+
+from olfactometer import util
 
 # TODO TODO force arduino code to be committed before upload, and embed commit
 # hash in arduino code somehow (either through communication -> EEPROM or 
@@ -164,6 +169,35 @@ def get_fqbn(port):
     return fqbn
 
 
+no_clean_hash_str = 'no_clean_git_version'
+# TODO might make more sense to move to util
+def version_str(not_in_docker=False):
+    """Returns either git hash of this repo or a str indicating none was usable.
+    """
+    if not util.in_docker:
+        repo = git.Repo(this_package_dir, search_parent_directories=True)
+        if repo.is_dirty():
+            warnings.warn('repo has uncommitted changes so not checking / '
+                'uploading git hash! only use for testing.'
+            )
+            return no_clean_hash_str
+
+        current_hash = repo.head.object.hexsha
+        return current_hash
+    else:
+        if not_in_docker:
+            raise RuntimeError('not_in_docker=True but were in docker!')
+
+        # Should be set with a command line argument in docker_build.sh
+        gh_var = 'OLFACTOMETER_VERSION_STR'
+        assert gh_var in os.environ
+        version_str = os.environ[gh_var]
+        # TODO maybe further check that it's either no_clean_hash_str or 
+        # something that could be a git hash
+        assert len(version_str) > 0, f'{gh_var} not set in Docker build!'
+        return version_str
+
+
 # TODO maybe thread fqbn through args so arduino-cli lookup not always needed
 def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
     build_root=None, dry_run=False, show_properties=False,
@@ -202,11 +236,10 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
                 'is the Arduino connected?'
             )
 
-        # TODO maybe do this in dry_run / show_properties cases too?
-        # otherwise, should i ValueError if fqbn not explicitly passed in those
-        # cases?
-        if fqbn is None:
-            fqbn = get_fqbn(port)
+    if fqbn is None:
+        # not currently raising the prior IOError if this is reached in
+        # dry_run or show_properties case...
+        fqbn = get_fqbn(port)
 
     cmd = (f'arduino-cli compile -b {fqbn} {sketch_dir} '
         f'--libraries {arduino_lib_dir} '
@@ -214,13 +247,47 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
     )
     if show_properties:
         cmd += ' --show-properties'
+
+    # Was between this and compiler.c.extra_flags and / or
+    # compiler.cpp.extra_flags. I'm assuming this sets both of those?
+    # https://github.com/arduino/arduino-cli/issues/210 warns that this can
+    # / will override similar flags specified in boards.txt, though I'm not
+    # sure that will be an issue we encounter.
+    extra_flag_list = []
+
+    vstr = version_str()
+    # Couldn't figure out sequence of [single/double]quotes / escape characters
+    # to pass arbitrary strings, so only passing strings with no spaces, and
+    # passing through a "stringizing" preprocessor step first.
+    extra_flag_list.append(f'-DOLFACTOMETER_VERSION_STR={vstr}')
+
+    # TODO figure out how to get this to work w/ version str.
+    # no matter the order, compiler complains about:
+    # "Error: unknown shorthand flag: 'D' in -D"...
     if arduino_debug_prints:
-        # Was between this and compiler.c.extra_flags and / or
-        # compiler.cpp.extra_flags. I'm assuming this sets both of those?
-        # https://github.com/arduino/arduino-cli/issues/210 warns that this can
-        # / will override similar flags specified in boards.txt, though I'm not
-        # sure that will be an issue we encounter.
-        cmd += ' --build-properties build.extra_flags=-DDEBUG_PRINTS'
+        '''
+        raise NotImplementedError('have not found way to get this to work '
+            'alongside my current use of -DOLFACTOMETER_VERSION_STR'
+        )
+        '''
+        extra_flag_list = ['-DDEBUG_PRINTS']
+
+    if len(extra_flag_list) > 0:
+        # was trying to use this to get the two flags above to work together,
+        # but no luck so far
+        '''
+        single_quote_each = True
+        if single_quote_each:
+            extra_flag_list = [f"'{e}'" for e in extra_flag_list]
+            #extra_flag_list = [f"\\'{e}\\'" for e in extra_flag_list]
+        '''
+        extra_flags = ' '.join(extra_flag_list)
+
+        # Seems to work with or without single quotes, when just passing
+        # -DDEBUG_PRINTS. Outer double quotes alone do not work.
+        cmd += f" --build-properties build.extra_flags='{extra_flags}'"
+        #cmd += f" --build-properties build.extra_flags={extra_flags}"
+
     if verbose:
         cmd += ' -v'
         
@@ -243,7 +310,12 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
     # TODO (as above) test for cmds that might have spaces or weird characters
     # to try to break cmd.split() method, and maybe revert to shell=True if
     # there is a problem and no easy fix
-    p = Popen(cmd.split())
+    shell = False
+    #shell = True
+    if shell:
+        p = Popen(cmd, shell=True)
+    else:
+        p = Popen(cmd.split())
     p.communicate()
 
     if td_tmp_build_dir is None:

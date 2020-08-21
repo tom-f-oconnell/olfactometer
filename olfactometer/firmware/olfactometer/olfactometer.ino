@@ -19,6 +19,20 @@
 // to enable debug prints, compiling yourself with some other build system.
 //#define DEBUG_PRINTS
 
+
+#ifdef OLFACTOMETER_VERSION_STR
+// Since I couldn't figure out any combination of single / double quotes /
+// escape characters that would let me set an arbitrary string in arduino-cli
+// extra_flags argument.
+// https://stackoverflow.com/questions/2410976
+#define STRINGIZE(x) #x
+#define STRINGIZE_VALUE_OF(x) STRINGIZE(x)
+const char *version_str = STRINGIZE_VALUE_OF(OLFACTOMETER_VERSION_STR);
+#else
+const char *version_str = "-DOLFACTOMETER_VERSION_STR not set";
+#endif
+
+
 #include <avr/wdt.h>
 
 // Using my fork of https://github.com/eric-wieser/nanopb-arduino
@@ -294,7 +308,7 @@ void print_trial_status(uint16_t trial, PinGroup *group) {
 }
 
 void finish() {
-    Serial.println("Finished (press Ctrl-C)");
+    Serial.println("Finished");
     software_reset();
 }
 
@@ -388,6 +402,7 @@ void setup() {
 
     // Other candidate rates: 38400, 57600, 115200 (max)
     Serial.begin(115200);
+    Serial.println(version_str);
 
     // TODO maybe print some message to identify this device + the software
     // version? maybe even available pins (though not sure how to calculate...

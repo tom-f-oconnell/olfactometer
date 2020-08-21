@@ -45,7 +45,8 @@ setup(
         # TODO can try to change names back once get everything working with
         # unique names
         'scripts/olf',
-        'scripts/olf-upload'
+        'scripts/olf-upload',
+        'scripts/olf-version-str'
     ],
     # TODO will including stuff above package dir prevent some things from
     # working? like building a wheel?

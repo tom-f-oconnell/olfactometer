@@ -49,11 +49,6 @@ if not in_docker:
     p.communicate()
     failure = bool(p.returncode)
     if failure:
-        # TODO delete me
-        print('proto_path:', proto_path)
-        print('proto_file:', proto_file)
-        print('this_package_dir:', this_package_dir)
-        #
         raise RuntimeError(f'generating python code from {proto_file} failed')
 
 # TODO is pb2 suffix indication i'm not using the version i want?
@@ -520,7 +515,8 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 # line arg, cause already a separate process at that point.
 # (or would this just make debugging harder, w/o prints from arduino?)
 def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
-    ignore_ack=False, try_parse=False, verbose=False):
+    allow_version_mismatch=False, ignore_ack=False, try_parse=False,
+    verbose=False):
 
     if do_upload:
         # TODO save file modification time at upload and check if it has changed
@@ -559,6 +555,21 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         # Default is False
         settings.no_ack = True
 
+    if allow_version_mismatch:
+        warnings.warn('allow_version_mismatch should only be used for '
+            'debugging!'
+        )
+
+    # TODO maybe move this function in here...
+    py_version_str = upload.version_str()
+    if (not allow_version_mismatch and
+        py_version_str == upload.no_clean_hash_str):
+
+        raise ValueError('can not run with uncommitted changes without '
+            'allow_version_mismatch, which is only for debugging. '
+            'please commit and re-upload.'
+        )
+
     baud_rate = parse_baud_from_sketch()
     print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
     # TODO TODO define some class that has its own context manager that maybe
@@ -567,11 +578,27 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     # other python code)
     with serial.Serial(port, baud_rate, timeout=0.1) as ser:
         print('Connected')
-        # TODO how to write in such a way that we don't need this sleep?
-        # any alternative besides having arduino write something?
-        # Tried 0.75 and lower but none of those seemed to have any bytes
-        # available on Arduino...
-        time.sleep(1.0)
+
+        while True:
+            version_line = ser.readline()
+            if len(version_line) > 0:
+                arduino_version_str = version_line.decode().strip()
+                break
+
+        if not allow_version_mismatch:
+            if arduino_version_str == upload.no_clean_hash_str:
+                raise ValueError('arduino code came from dirty git state. '
+                    'please commit and re-upload.'
+                )
+
+            if py_version_str != arduino_version_str:
+                raise ValueError(f'version mismatch (Python: {py_version_str}, '
+                    f'Arduino: {arduino_version_str})! please re-upload!'
+                )
+
+        elif verbose:
+            print('Python version:', py_version_str)
+            print('Arduino version:', arduino_version_str)
 
         write_message(ser, settings, ignore_ack=ignore_ack, verbose=verbose)
 
@@ -582,16 +609,20 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         else:
             print('Starting')
 
+        # TODO err in not settings.follow_hardware_timing case, if enough time
+        # has passed before we get first trial status print?
+
         while True:
             line = ser.readline()
             if len(line) > 0:
                 try:
-                    print(line.decode(), end='')
+                    line = line.decode()
+                    print(line, end='')
+                    if line.strip() == 'Finished':
+                        break
                 # Docs say decoding errors will be a ValueError or a subclass.
                 # UnicodeDecodeError, for instance, is a subclass.
                 except ValueError as e:
                     print(e)
                     print(line)
-
-        # TODO have python exit when it gets the 'Finished'... line?
 

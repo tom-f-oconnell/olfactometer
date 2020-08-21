@@ -51,7 +51,20 @@ DOCKER_USERNAME="tom0connell"
 #TAG_NAME="olf"
 TAG_NAME="$(basename `pwd`)"
 
+if ! [ -x "$(command -v olf-version-str)" ]; then
+    echo "olf-version-str not available!" >&2
+    exit 1
+fi
+
+version_str="`olf-version-str`"
+if ! [ $? -eq 0 ]; then
+    echo "olf-version-str failed!" >&2
+    exit 1
+fi
+echo "Version string: $version_str"
+
 # The ':latest' part of the tag (the version?) seems to be filled in
 # automatically (as 'latest') if not specified.
-sudo docker build -t "${DOCKER_USERNAME}/${TAG_NAME}" .
+sudo docker build -t "${DOCKER_USERNAME}/${TAG_NAME}" --build-arg \
+    OLFACTOMETER_VERSION_STR="$version_str" .
 

@@ -27,7 +27,12 @@ if __name__ == '__main__':
         'boards. your connected board should be detected without needing to '
         'pass this.'
     )
-    parser.add_argument('-v', '--verbose', action='store_true', default=False)
+    parser.add_argument('-a', '--allow-version-mismatch', action='store_true',
+        default=False, help='unless passed, git hash of arduino code will be '
+        'checked against git hash of python code, and it will not let you '
+        'proceed unless they match. re-upload arduino code with clean '
+        '"git status" to fix mismatch without this flag.'
+    )
     parser.add_argument('-t', '--try-parse', action='store_true', default=False,
         help='exit after attempting to parse config'
     )
@@ -36,20 +41,23 @@ if __name__ == '__main__':
         'makes viewing all debug prints easier, as no worry they will interfere'
         ' with receipt of message number.'
     )
+    parser.add_argument('-v', '--verbose', action='store_true', default=False)
     parser.add_argument('config_file', type=str, nargs='?', default=None,
         help='.json/.yaml file containing all required data. see `load` '
         'function. reads config from stdin if not passed.'
     )
     args = parser.parse_args()
 
-    config_file = args.config_file
+    do_upload = args.upload
     port = args.port
     fqbn = args.fqbn
-    do_upload = args.upload
+    allow_version_mismatch = args.allow_version_mismatch
+    try_parse = args.try_parse
     ignore_ack = args.ignore_ack
     verbose = args.verbose
-    try_parse = args.try_parse
+    config_file = args.config_file
 
     main(config_file, port=port, fqbn=fqbn, do_upload=do_upload,
+        allow_version_mismatch=allow_version_mismatch,
         ignore_ack=ignore_ack, try_parse=try_parse, verbose=verbose
     )

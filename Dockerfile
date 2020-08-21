@@ -71,6 +71,11 @@ RUN protoc --python_out=. olf.proto
 WORKDIR /olfactometer
 RUN pip install .
 
+# TODO some way to make this argument required?
+# https://vsupalov.com/docker-build-pass-environment-variables/
+ARG version_str
+ENV OLFACTOMETER_VERSION_STR=$version_str
+
 # TODO also do the nanopb generation stuff + setting up arduino libraries in
 # here? (maybe call one of my own functions for this?)
 
