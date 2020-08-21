@@ -8,8 +8,6 @@ import shutil
 import tempfile
 import warnings
 
-import git
-
 from olfactometer import util
 
 # TODO TODO force arduino code to be committed before upload, and embed commit
@@ -175,6 +173,11 @@ def version_str(not_in_docker=False):
     """Returns either git hash of this repo or a str indicating none was usable.
     """
     if not util.in_docker:
+        # Need to import this here because otherwise there is an ImportError
+        # that complains about lack of git executable (which we don't need in
+        # Docker case anyway)
+        import git
+
         repo = git.Repo(this_package_dir, search_parent_directories=True)
         if repo.is_dirty():
             warnings.warn('repo has uncommitted changes so not checking / '

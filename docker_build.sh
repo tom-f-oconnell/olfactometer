@@ -56,15 +56,15 @@ if ! [ -x "$(command -v olf-version-str)" ]; then
     exit 1
 fi
 
-version_str="`olf-version-str`"
+_version_str="`olf-version-str`"
 if ! [ $? -eq 0 ]; then
     echo "olf-version-str failed!" >&2
     exit 1
 fi
-echo "Version string: $version_str"
+echo "Version string: $_version_str"
 
 # The ':latest' part of the tag (the version?) seems to be filled in
 # automatically (as 'latest') if not specified.
 sudo docker build -t "${DOCKER_USERNAME}/${TAG_NAME}" --build-arg \
-    OLFACTOMETER_VERSION_STR="$version_str" .
+    version_str="$_version_str" .
 

@@ -593,7 +593,8 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
 
             if py_version_str != arduino_version_str:
                 raise ValueError(f'version mismatch (Python: {py_version_str}, '
-                    f'Arduino: {arduino_version_str})! please re-upload!'
+                    f'Arduino: {arduino_version_str})! please re-upload (add '
+                    'the -u flag)!'
                 )
 
         elif verbose:
