@@ -505,7 +505,7 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 # (or would this just make debugging harder, w/o prints from arduino?)
 def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     allow_version_mismatch=False, ignore_ack=False, try_parse=False,
-    verbose=False):
+    timeout_s=2.0, verbose=False):
 
     if do_upload:
         # TODO save file modification time at upload and check if it has changed
@@ -572,12 +572,19 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     # other python code)
     with serial.Serial(port, baud_rate, timeout=0.1) as ser:
         print('Connected')
+        connect_time = time.time()
 
         while True:
             version_line = ser.readline()
             if len(version_line) > 0:
                 arduino_version_str = version_line.decode().strip()
                 break
+
+            if time.time() - connect_time > timeout_s:
+                raise RuntimeError('arduino did not respond within '
+                    f'{timeout_s:.1f} seconds. have you uploaded the code? '
+                    're-run with -u if not.'
+                )
 
         if not allow_version_mismatch:
             if arduino_version_str == upload.no_clean_hash_str:
