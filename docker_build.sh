@@ -56,6 +56,10 @@ if ! [ -x "$(command -v olf-version-str)" ]; then
     exit 1
 fi
 
+# TODO TODO TODO probably have this fail if it's upload.no_clean_hash_str,
+# rather than a git hash, because otherwise docker image will only be usable w/
+# -a flag, which is only intended for debugging. maybe make flag for
+# olf-version-str that will fail in that case.
 _version_str="`olf-version-str`"
 if ! [ $? -eq 0 ]; then
     echo "olf-version-str failed!" >&2

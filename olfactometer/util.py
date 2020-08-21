@@ -56,25 +56,21 @@ if not in_docker:
 from olfactometer import olf_pb2
 
 
+'''
 if in_docker:
-    # TODO TODO TODO does this bode poorly for latency of pyserial communication
-    # / need to flush that? (ultimately test docker deployment [perhaps also
-    # including specifically on windows, if that even works with pyserial] with
-    # hardware recording the outputs to verify the timing in software)
+    # TODO TODO TODO does need to set PYTHONUNBUFFERED=1 bode poorly for latency
+    # of pyserial communication / need to flush that? (ultimately test docker
+    # deployment [perhaps also including specifically on windows, if that even
+    # works with pyserial] with hardware recording the outputs to verify the
+    # timing in software)
     # TODO one test might be serial writing something to arduino which should
     # trigger a led change, immediately followed by time.sleep, and see if the
     # LED change happens any more reliably / with lower latency without docker.
     # need a read test too though, + better tests.
     # TODO TODO maybe also flush after each serial read / write here, or
     # change some of the other pyserial settings?
-    # TODO some less hacky fix for print?
-    _builtin_print = print
-    def flush_print(*args, **kwargs):
-        # Ignoring any passed values
-        if 'flush' in kwargs:
-            del kwargs['flush']
-        _builtin_print(*args, flush=True, **kwargs)
-    print = flush_print
+'''
+    
 
 nanopb_options_path = join(this_package_dir, 'olf.options')
 with open(nanopb_options_path, 'r') as f:
@@ -485,13 +481,6 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 
             arduino_msg_num = int.from_bytes(arduino_msg_num_byte, 'big')
             if arduino_msg_num != curr_msg_num:
-                '''
-                print('\n\nMESSAGE NUM FAILURE')
-                print(arduino_msg_num_byte)
-                print(arduino_msg_num_byte.decode())
-                print(arduino_msg_num)
-                import ipdb; ipdb.set_trace()
-                '''
                 raise RuntimeError('arduino sent wrong message num')
 
         # TODO test wraparound behavior (+ w/ arduino)
@@ -562,6 +551,11 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
 
     # TODO maybe move this function in here...
     py_version_str = upload.version_str()
+
+    # TODO TODO also lookup latest hash on github and check that it's not in any
+    # of the hashes in our history (git log), and warn / prompt about update if
+    # github version is newer
+
     if (not allow_version_mismatch and
         py_version_str == upload.no_clean_hash_str):
 

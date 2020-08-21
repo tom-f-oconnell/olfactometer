@@ -251,45 +251,22 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
     if show_properties:
         cmd += ' --show-properties'
 
-    # Was between this and compiler.c.extra_flags and / or
-    # compiler.cpp.extra_flags. I'm assuming this sets both of those?
-    # https://github.com/arduino/arduino-cli/issues/210 warns that this can
-    # / will override similar flags specified in boards.txt, though I'm not
-    # sure that will be an issue we encounter.
     extra_flag_list = []
 
     vstr = version_str()
-    # Couldn't figure out sequence of [single/double]quotes / escape characters
-    # to pass arbitrary strings, so only passing strings with no spaces, and
-    # passing through a "stringizing" preprocessor step first.
     extra_flag_list.append(f'-DOLFACTOMETER_VERSION_STR={vstr}')
 
-    # TODO figure out how to get this to work w/ version str.
-    # no matter the order, compiler complains about:
-    # "Error: unknown shorthand flag: 'D' in -D"...
     if arduino_debug_prints:
-        '''
-        raise NotImplementedError('have not found way to get this to work '
-            'alongside my current use of -DOLFACTOMETER_VERSION_STR'
-        )
-        '''
-        extra_flag_list = ['-DDEBUG_PRINTS']
+        extra_flag_list.append('-DDEBUG_PRINTS')
 
     if len(extra_flag_list) > 0:
-        # was trying to use this to get the two flags above to work together,
-        # but no luck so far
-        '''
-        single_quote_each = True
-        if single_quote_each:
-            extra_flag_list = [f"'{e}'" for e in extra_flag_list]
-            #extra_flag_list = [f"\\'{e}\\'" for e in extra_flag_list]
-        '''
         extra_flags = ' '.join(extra_flag_list)
-
-        # Seems to work with or without single quotes, when just passing
-        # -DDEBUG_PRINTS. Outer double quotes alone do not work.
-        cmd += f" --build-properties build.extra_flags='{extra_flags}'"
-        #cmd += f" --build-properties build.extra_flags={extra_flags}"
+        # Was between this and compiler.c.extra_flags and / or
+        # compiler.cpp.extra_flags. I'm assuming this sets both of those?
+        # https://github.com/arduino/arduino-cli/issues/210 warns that this can
+        # / will override similar flags specified in boards.txt, though I'm not
+        # sure that will be an issue we encounter.
+        cmd += f' --build-properties build.extra_flags="{extra_flags}"'
 
     if verbose:
         cmd += ' -v'
@@ -310,15 +287,11 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
     # TODO parse output to check the -t flag indicated successful verification
     # (if returncode is sufficient, no need...)
 
-    # TODO (as above) test for cmds that might have spaces or weird characters
-    # to try to break cmd.split() method, and maybe revert to shell=True if
-    # there is a problem and no easy fix
-    shell = False
-    #shell = True
-    if shell:
-        p = Popen(cmd, shell=True)
-    else:
-        p = Popen(cmd.split())
+    # could maybe go back to shell=False if i didn't just cmd.split(), and maybe
+    # included all of the portion that needed quoting in one part. switched to
+    # shell=True because this is the only way i found (so far) to get both
+    # preprocessor defines above (the -D... args) to work together.
+    p = Popen(cmd, shell=True)
     p.communicate()
 
     if td_tmp_build_dir is None:

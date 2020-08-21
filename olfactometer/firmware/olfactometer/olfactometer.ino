@@ -19,7 +19,6 @@
 // to enable debug prints, compiling yourself with some other build system.
 //#define DEBUG_PRINTS
 
-
 #ifdef OLFACTOMETER_VERSION_STR
 // Since I couldn't figure out any combination of single / double quotes /
 // escape characters that would let me set an arbitrary string in arduino-cli
@@ -31,7 +30,6 @@ const char *version_str = STRINGIZE_VALUE_OF(OLFACTOMETER_VERSION_STR);
 #else
 const char *version_str = "-DOLFACTOMETER_VERSION_STR not set";
 #endif
-
 
 #include <avr/wdt.h>
 
@@ -451,13 +449,6 @@ void setup() {
     } else if (settings.which_control == Settings_timing_tag) {
         #ifdef DEBUG_PRINTS
         Serial.println("settings.control == timing");
-
-        Serial.print("pre_pulse_us: ");
-        Serial.print(settings.control.timing.pre_pulse_us);
-        Serial.print(", pulse_us: ");
-        Serial.print(settings.control.timing.pulse_us);
-        Serial.print(", post_pulse_us: ");
-        Serial.println(settings.control.timing.post_pulse_us);
         #endif
 
     } else {

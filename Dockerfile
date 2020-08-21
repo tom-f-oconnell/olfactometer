@@ -84,5 +84,9 @@ ENV OLFACTOMETER_VERSION_STR=$version_str
 # TODO and maybe pip uninstall test_requirements.txt after, if at build time
 # only?
 
+# Otherwise print and warnings.warn both seem to just output everything at the
+# end.
+ENV PYTHONUNBUFFERED=1
+
 ENTRYPOINT ["olf"]
 
