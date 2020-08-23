@@ -7,6 +7,7 @@ import glob
 import shutil
 import tempfile
 import warnings
+import sys
 
 from olfactometer import util
 
@@ -162,6 +163,17 @@ def get_fqbn(port):
     return fqbn
 
 
+def yes_or_no(question):
+    while True:
+        reply = str(input(question + ' (y/n): ')).lower().strip()
+        if reply[:1] == 'y':
+            return True
+        elif reply[:1] == 'n':
+            return False
+        else:
+            print('Please answer y/n')
+
+
 # TODO maybe copy current dir (w/ git info) to tempfile dir and change that in
 # various ways to unit test?
 # TODO could also maybe use `hub` cli tool to automate some github side parts of
@@ -174,33 +186,17 @@ def is_repo_current(repo, warn=True):
 
     Returns True or False.
     """
-
-    print('Fetching...')
     # TODO fetch w/ no authentication even if git auth currently set to ssh, if
     # possible (to not need to type in password for key)
     # (possible in case where it's public at least?)
     fetch_info_list = repo.remotes.origin.fetch()
 
-    '''
-    assert len(fetch_info_list) == 1, ('can not figure out from docs when (if '
-        'ever) this will have a length != 1'
-    )
-    fetch_info = fetch_info_list[0]
-
-    # TODO TODO is fetch_info of length equal to # of commits fetched or what?
-    # test!
-    '''
-
-    # TODO TODO test whether the fetch is required here (if actually behind)
+    # TODO test whether the fetch is required here (if actually behind)
     # (and if not, why not?)
+    # https://stackoverflow.com/questions/17224134
     commits_behind = list(repo.iter_commits('master..origin/master'))
-    commits_ahead = list(repo.iter_commits('origin/master..master'))
 
-    print('len(commits_behind):', len(commits_behind))
-    print('len(commits_ahead):', len(commits_ahead))
-
-    import ipdb; ipdb.set_trace()
-
+    up_to_date = len(commits_behind) == 0
     if not up_to_date and warn:
         warnings.warn('Github version has updates available!')
 
@@ -212,6 +208,9 @@ no_clean_hash_str = 'no_clean_git_version'
 def version_str(update_check=False, update_on_prompt=False):
     """Returns either git hash of this repo or a str indicating none was usable.
     """
+    if update_on_prompt:
+        update_check = True
+
     if not util.in_docker:
         # Need to import this here because otherwise there is an ImportError
         # that complains about lack of git executable (which we don't need in
@@ -221,25 +220,34 @@ def version_str(update_check=False, update_on_prompt=False):
         repo = git.Repo(this_package_dir, search_parent_directories=True)
 
         if update_check:
-            if not is_repo_current(repo) and update_on_prompt:
-                # TODO check this works / we are not in a dirty state before
-                # attempting this
-                repo.remotes.origin.pull()
+            up_to_date = is_repo_current(repo)
 
         if repo.is_dirty():
-            # TODO if update_check=True (and check results in updates found)
-            # AND update_on_prompt=True and yes selected, err if we are here
-            # (if repo is_dirty)
+            if not up_to_date and update_on_prompt:
+                raise RuntimeError('can not update because of uncommitted '
+                    'changes'
+                )
+
             warnings.warn('repo has uncommitted changes so not checking / '
                 'uploading git hash! only use for testing.'
             )
             return no_clean_hash_str
-
-        # TODO if update does happen, prompt user to restart code and exit
+        else:
+            if not up_to_date and update_on_prompt:
+                do_update = yes_or_no('Pull changes from Github?')
+                if do_update:
+                    # TODO check this works
+                    repo.remotes.origin.pull()
+                    print('Changes pulled from Github. Please re-run script.')
+                    sys.exit()
 
         current_hash = repo.head.object.hexsha
         return current_hash
     else:
+        if update_check:
+            # TODO TODO implement similar thing for docker (check docker hub)
+            warnings.warn('update checking not available in docker version')
+
         # Should be set with a command line argument in docker_build.sh
         gh_var = 'OLFACTOMETER_VERSION_STR'
         assert gh_var in os.environ
