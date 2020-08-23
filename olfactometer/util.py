@@ -507,19 +507,6 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     allow_version_mismatch=False, ignore_ack=False, try_parse=False,
     timeout_s=2.0, verbose=False):
 
-    if do_upload:
-        # TODO save file modification time at upload and check if it has changed
-        # before re-uploading with this flag... (just to save program memory
-        # life...) (docker couldn't use...)
-
-        # TODO maybe refactor back and somehow have a new section of argparser
-        # filled in without flags here, indicating they are upload specific
-        # flags. idiomatic way to do that? subcommand?
-
-        # This raises a RuntimeError if the compilation / upload returns a
-        # non-zero exit status, stopping further steps here, as intended.
-        upload.main(port=port, fqbn=fqbn)
-
     if in_docker and config_file is not None:
         raise ValueError('passing filenames to docker currently not supported. '
             'instead, redirect stdin from that file. see README for examples.'
@@ -550,7 +537,22 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         )
 
     # TODO maybe move this function in here...
-    py_version_str = upload.version_str()
+    py_version_str = upload.version_str(update_check=True,
+        update_on_prompt=True
+    )
+
+    if do_upload:
+        # TODO save file modification time at upload and check if it has changed
+        # before re-uploading with this flag... (just to save program memory
+        # life...) (docker couldn't use...)
+
+        # TODO maybe refactor back and somehow have a new section of argparser
+        # filled in without flags here, indicating they are upload specific
+        # flags. idiomatic way to do that? subcommand?
+
+        # This raises a RuntimeError if the compilation / upload returns a
+        # non-zero exit status, stopping further steps here, as intended.
+        upload.main(port=port, fqbn=fqbn)
 
     # TODO TODO also lookup latest hash on github and check that it's not in any
     # of the hashes in our history (git log), and warn / prompt about update if

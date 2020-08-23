@@ -10,11 +10,6 @@ import warnings
 
 from olfactometer import util
 
-# TODO TODO force arduino code to be committed before upload, and embed commit
-# hash in arduino code somehow (either through communication -> EEPROM or 
-# compile in with arduino-cli compiler flag (-D...)
-# (not relevant in pip installed or docker cases, just in [possibly editable
-# pip installed] and in-source-tree cases)
 
 # TODO see note above similar line in util.py as to whether to try replacing
 # this w/ pkg_resources
@@ -167,9 +162,54 @@ def get_fqbn(port):
     return fqbn
 
 
+# TODO maybe copy current dir (w/ git info) to tempfile dir and change that in
+# various ways to unit test?
+# TODO could also maybe use `hub` cli tool to automate some github side parts of
+# the test (if that wouldn't be too crazy...)
+def is_repo_current(repo, warn=True):
+    """Fetches from remote and checks if local repo is up-to-date.
+
+    Args:
+    repo (`git.Repo`): `gitpython` `Repo` object
+
+    Returns True or False.
+    """
+
+    print('Fetching...')
+    # TODO fetch w/ no authentication even if git auth currently set to ssh, if
+    # possible (to not need to type in password for key)
+    # (possible in case where it's public at least?)
+    fetch_info_list = repo.remotes.origin.fetch()
+
+    '''
+    assert len(fetch_info_list) == 1, ('can not figure out from docs when (if '
+        'ever) this will have a length != 1'
+    )
+    fetch_info = fetch_info_list[0]
+
+    # TODO TODO is fetch_info of length equal to # of commits fetched or what?
+    # test!
+    '''
+
+    # TODO TODO test whether the fetch is required here (if actually behind)
+    # (and if not, why not?)
+    commits_behind = list(repo.iter_commits('master..origin/master'))
+    commits_ahead = list(repo.iter_commits('origin/master..master'))
+
+    print('len(commits_behind):', len(commits_behind))
+    print('len(commits_ahead):', len(commits_ahead))
+
+    import ipdb; ipdb.set_trace()
+
+    if not up_to_date and warn:
+        warnings.warn('Github version has updates available!')
+
+    return up_to_date
+
+
 no_clean_hash_str = 'no_clean_git_version'
 # TODO might make more sense to move to util
-def version_str(not_in_docker=False):
+def version_str(update_check=False, update_on_prompt=False):
     """Returns either git hash of this repo or a str indicating none was usable.
     """
     if not util.in_docker:
@@ -179,18 +219,27 @@ def version_str(not_in_docker=False):
         import git
 
         repo = git.Repo(this_package_dir, search_parent_directories=True)
+
+        if update_check:
+            if not is_repo_current(repo) and update_on_prompt:
+                # TODO check this works / we are not in a dirty state before
+                # attempting this
+                repo.remotes.origin.pull()
+
         if repo.is_dirty():
+            # TODO if update_check=True (and check results in updates found)
+            # AND update_on_prompt=True and yes selected, err if we are here
+            # (if repo is_dirty)
             warnings.warn('repo has uncommitted changes so not checking / '
                 'uploading git hash! only use for testing.'
             )
             return no_clean_hash_str
 
+        # TODO if update does happen, prompt user to restart code and exit
+
         current_hash = repo.head.object.hexsha
         return current_hash
     else:
-        if not_in_docker:
-            raise RuntimeError('not_in_docker=True but were in docker!')
-
         # Should be set with a command line argument in docker_build.sh
         gh_var = 'OLFACTOMETER_VERSION_STR'
         assert gh_var in os.environ
