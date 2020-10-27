@@ -10,6 +10,7 @@ sudo apt install protobuf-compiler -y
 # TODO get this script path and cd up a level, relative to it?
 # Currently assuming they have cloned this repo and are running this script from
 # the root of it.
+# TODO need --recursive too, or is that just for submodules within submodules?
 git submodule update --init
 
 # https://stackoverflow.com/questions/4774054

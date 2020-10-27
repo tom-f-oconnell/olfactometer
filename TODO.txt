@@ -83,3 +83,27 @@
 - run arduino code through valgrid (and setup olf-upload flags for that) and any
   other useful detectors of potential code problems
 
+- in pulse_timing case (or if i modify follow_hardware_timing==True case to have
+  a time estimate for each, or if i estimate during experiment) print time
+  experiment will take (or estimate of it)
+  - + in follow_* case, just time how long it took
+  - + in both cases, also report how long after it finished ctrl c was pressed
+  - (at this point maybe just actually exit in python though, rather than
+    prompting user to press ctrl-C? both require parsing finished basically...)
+
+- !!!!! have python send an abort command atexit (or if i implement olfactometer
+  as context manager, in cleanup portion of that). i want to be able to ctrl-C
+  stuff without having it continue delivering odors!
+
+- !!!! ensure that hardware pulses beyond end don't trigger anything until
+  python actual initaites again (in follow_* case). i feel like i saw one case
+  2020-08-17 where that was not the case.
+
+- print something clarify whether "trial: ..." status prints come at the
+  beginning / end of trial or where. change if necessary depending on whether
+  follow_* is true
+
+- !!!! timeout on / after "Connected" step, to get timely err if uC code isn't
+  uploaded (also maybe color Connected orange and / or at least Ready green?)
+  (or automatically upload if timeout passes? to not forget -u?)
+

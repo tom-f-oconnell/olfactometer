@@ -116,6 +116,14 @@ dependencies with this command. This will probably not work on other systems.
 ./scripts/install_18.04_deps.sh
 ```
 
+If you are not using 18.04, and thus could not use the script above, also run
+this command from within your local clone of this git repository:
+```
+git submodule update --init
+```
+If you did run the script for Ubuntu 18.04, it will have done the above git
+command for you.
+
 After you have installed the necessary dependencies:
 ```
 # (make and activate a virtual environment here, if you would like)
