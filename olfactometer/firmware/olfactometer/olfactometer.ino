@@ -186,7 +186,19 @@ const uint8_t external_timing_interrupt = digitalPinToInterrupt(
 uint8_t balance_pin = 0;
 // Mirrors pulse timing of currently active valve. For recording timing this
 // firmware produces (without knowing which pin it was pulsing).
-uint8_t timing_output_pin = 0;
+// TODO maybe negate this in the variable name so it can effectively default
+// true?
+bool enable_timing_output = false;
+// TODO TODO TODO may need to revert this too
+const uint8_t timing_output_pin = 21;
+
+
+// TODO definitely enable configuration of this on the host side (at runtime).
+// also enable it being high or low by default.
+// TODO TODO also allow disabling this though
+// TODO TODO TODO TODO change back to 31. was testing upstairs.
+const uint8_t balance_pin = 48;
+//const uint8_t balance_pin = 31;
 
 // TODO TODO also add an optional pin to signal the pin thats getting switched
 // (as before)
@@ -569,6 +581,11 @@ void loop() {
     // pin 13 flashes in boot loader, so it'll flash in the end of the last
     // trial...)
     if (pin_seq_idx == pin_seq.pin_groups_count) {
+        // TODO TODO TODO make this delay configurable with a parameter
+        // (right now, this is mainly to deal w/ the timing output pin going
+        // high (seemingly) after the reset. none of valve pins going high.
+        // arduino mega.
+        delay(18000);
         finish();
     }
     // for testing ISR with just one arduino (connect 3<->external_timing_pin)
