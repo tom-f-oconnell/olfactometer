@@ -1,4 +1,13 @@
 
+- how to organize thing such that it's actually easy to compose this with
+  arbitrary scripts to specify trials structures? i'm feeling like i might not
+  want to try to anticipate all ways of representing trials in here... not sure.
+  - maybe accept a python file in place of yaml, which must follow a certain
+    format (function / variable with a certain name? some less hacky way?)
+    that outputs either YAML or the pre-serialization equivalent
+    - would i want to support certain types of inputs to these sorts of
+      functions?
+
 - write scripts that can be used with another arduino / DAQ board to verify that
   parts of this are working, such as:
   - arduino script that detects which pins are high (connect pins 1:1) and
