@@ -219,6 +219,10 @@ def version_str(update_check=False, update_on_prompt=False):
 
         repo = git.Repo(this_package_dir, search_parent_directories=True)
 
+        # TODO check! this was hack to fix update_check undefined error. seems
+        # ok tho.
+        up_to_date = True
+        #
         if update_check:
             up_to_date = is_repo_current(repo)
 
@@ -251,11 +255,11 @@ def version_str(update_check=False, update_on_prompt=False):
         # Should be set with a command line argument in docker_build.sh
         gh_var = 'OLFACTOMETER_VERSION_STR'
         assert gh_var in os.environ
-        version_str = os.environ[gh_var]
+        vstr = os.environ[gh_var]
         # TODO maybe further check that it's either no_clean_hash_str or 
         # something that could be a git hash
-        assert len(version_str) > 0, f'{gh_var} not set in Docker build!'
-        return version_str
+        assert len(vstr) > 0, f'{gh_var} not set in Docker build!'
+        return vstr
 
 
 # TODO maybe thread fqbn through args so arduino-cli lookup not always needed
@@ -311,6 +315,7 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
     extra_flag_list = []
 
     vstr = version_str()
+
     extra_flag_list.append(f'-DOLFACTOMETER_VERSION_STR={vstr}')
 
     if arduino_debug_prints:

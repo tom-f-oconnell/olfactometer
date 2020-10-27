@@ -164,14 +164,21 @@ def load_yaml(yaml_filelike, message=None):
         # generator too, if user defined...)? maybe as part of a zip file? or
         # copy alongside w/ diff suffix or something?
 
-        # TODO TODO TODO filter contents of yaml_dict to only necessary stuff if
-        # extra info will cause ParseDict to fail (hardcode for now, find better
-        # solution later)
+        # ignore_unknown_fields argument to ParseDict below didn't seem to work
+        # for me. maybe either a version mismatch or not the behavior i
+        # expected. gonna have to manually filter out stuff not needed for
+        # protobuf messages instead.
 
-    # TODO maybe always have ignore_unknown_... True for consistency...
+        '''
+        # TODO TODO TODO hardcoding which field to keep for now.
+        # find better solution!!!
+        yaml_dict = {k: v for k, v in yaml_dict.items()
+            if k in ('settings', 'pinSequence')
+        }
+        '''
+
     json_format.ParseDict(yaml_dict, message,
-        ignore_unknown_fields=ignore_unknown_fields
-    )
+        ignore_unknown_fields=ignore_unknown_fields)
 
     return message
 
@@ -249,10 +256,10 @@ def max_count(name):
 def validate_settings(settings, **kwargs):
     # 0 = disabled.
     if settings.balance_pin != 0:
-        validate_pin(balance_pin)
+        validate_pin(settings.balance_pin)
 
     if settings.timing_output_pin != 0:
-        validate_pin(timing_output_pin)
+        validate_pin(settings.timing_output_pin)
 
     if settings.WhichOneof('control') == 'follow_hardware_timing':
         if not settings.follow_hardware_timing:
@@ -584,6 +591,12 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     settings = all_required_data.settings
     pin_sequence = all_required_data.pin_sequence
 
+    # TODO i thought there wasn't optional stuff? so how come it doesn't fail
+    # w/o balance_pin, etc passed? (it also doesn't print them, which i might
+    # expect if they just defaulted to 0...) idk...
+    # (if defaults to 0, remove my reimplementation of that logic in basic
+    # generator)
+
     if verbose or try_parse:
         print('Config data:')
         print(all_required_data)
@@ -605,9 +618,13 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         )
 
     # TODO maybe move this function in here...
+    py_version_str = upload.version_str()
+    # update check not working yet
+    '''
     py_version_str = upload.version_str(update_check=True,
         update_on_prompt=True
     )
+    '''
 
     if do_upload:
         # TODO save file modification time at upload and check if it has changed

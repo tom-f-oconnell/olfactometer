@@ -170,6 +170,7 @@ PinSequence pin_seq = PinSequence_init_zero;
 // {0,1} across all hardware targets (which are required for Serial)
 bool follow_hardware_timing = false;
 
+// TODO TODO also allow configuration at runtime... (as all pins should be...)
 // This seems to be one of the availble interrupt pins on the Mega
 // TODO same type of interrupt as we could achieve on 2/3 though?
 const uint8_t external_timing_pin = 20;
@@ -186,19 +187,8 @@ const uint8_t external_timing_interrupt = digitalPinToInterrupt(
 uint8_t balance_pin = 0;
 // Mirrors pulse timing of currently active valve. For recording timing this
 // firmware produces (without knowing which pin it was pulsing).
-// TODO maybe negate this in the variable name so it can effectively default
-// true?
-bool enable_timing_output = false;
-// TODO TODO TODO may need to revert this too (if so, what was the other value?)
-const uint8_t timing_output_pin = 21;
+uint8_t timing_output_pin = 0;
 
-
-// TODO definitely enable configuration of this on the host side (at runtime).
-// also enable it being high or low by default.
-// TODO TODO also allow disabling this though
-// TODO TODO TODO TODO change back to 31. was testing upstairs.
-const uint8_t balance_pin = 48;
-//const uint8_t balance_pin = 31;
 
 // TODO TODO also add an optional pin to signal the pin thats getting switched
 // (as before)

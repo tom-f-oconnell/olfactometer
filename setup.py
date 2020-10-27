@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 # TODO TODO add note to Development install instructions saying that editable
 # install won't completely work right (and it won't, right? cause scripts i
@@ -11,7 +11,8 @@ setup(
     # TODO maybe just replace w/ find_package() (to not have to change
     # olfacometer twice if package name changes, and since arbitrary code
     # executtion in setup.py is not supported for all build systems)?
-    packages=['olfactometer'],
+    #packages=['olfactometer'],
+    packages=find_packages(),
     install_requires=[
         # For nanopb
         'protobuf',

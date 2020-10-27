@@ -83,6 +83,7 @@ def make_config_dict(generator_config_yaml_dict):
     available_valve_pins = data['available_valve_pins']
     assert type(available_valve_pins) is list
 
+    odors = data['odors']
     # TODO factor out this validation
     # Each element of odors, which is a dict, must at least have a `name`
     # describing what that odor is (e.g. the chemical name).
@@ -119,13 +120,25 @@ def make_config_dict(generator_config_yaml_dict):
     # No mixtures supported in this config generation function
     pinlist_at_each_trial = [[p] for p in trial_pins]
 
+    # TODO maybe require these are in config (explicitly set to 0 to disable if
+    # you don't want to use them?) maybe 0 isn't that clear in this higher level
+    # config though...
+    # TODO depending on how the downstream stuff is working, this defaulting to
+    # 0 could very well be redundant anyway... i suspect that might already be
+    # how it behaves, even though the display is kinda weird then
+    balance_pin = data['balance_pin'] if 'balance_pin' in data else 0
+    timing_output_pin = \
+        data['timing_output_pin'] if 'timing_output_pin' in data else 0
+
     generated_yaml_dict = {
         'settings': {
             'timing': {
                 'pre_pulse_us': pre_pulse_us,
                 'pulse_us': pulse_us,
                 'post_pulse_us': post_pulse_us
-            }
+            },
+            'balance_pin': balance_pin,
+            'timing_output_pin': timing_output_pin
         },
         # TODO make a util function to generate this from list of lists of
         # integers?
