@@ -8,6 +8,7 @@ import subprocess
 import warnings
 import sys
 import tempfile
+from datetime import datetime
 
 import serial
 from google.protobuf.internal.encoder import _VarintBytes
@@ -15,6 +16,7 @@ from google.protobuf import json_format, pyext
 import yaml
 
 from olfactometer import upload
+from olfactometer.generators import basic
 
 in_docker = 'OLFACTOMETER_IN_DOCKER' in os.environ
 
@@ -97,13 +99,79 @@ def load_json(json_filelike, message=None):
 
 
 def load_yaml(yaml_filelike, message=None):
+    """Returns a populated protobuf message with data from YAML config.
+
+    Will also look for a `generator: <x>` entry in the top-level of the YAML. If
+    present, <x> can currently just be 'basic', but in the future could also be
+    the prefix of other builtin generators or paths to user defined generators.
+    """
+    # TODO TODO TODO refactor so json case isn't left out from generator
+    # handling (or just drop json support, which might make more sense...)
+
     if message is None:
         message = olf_pb2.AllRequiredData()
 
     # TODO safe_load accept str / filelike or both?
     # TODO do we actually need any of the yaml 1.2(+?) features
     # available in ruamel.yaml but not in PyYAML (1.1 only)?
-    json_format.ParseDict(yaml.safe_load(yaml_filelike), message)
+    yaml_dict = yaml.safe_load(yaml_filelike)
+
+    # (the default)
+    ignore_unknown_fields = False
+
+    # This means that the protobuf message(s) we define will cause problems if
+    # it ever also would correspond to YAML with this 'generator' key at the
+    # same level.
+    if 'generator' in yaml_dict:
+        ignore_unknown_fields = True
+
+        generator_yaml_dict = yaml_dict
+        generator = generator_yaml_dict['generator']
+
+        if generator != 'basic':
+            raise NotImplementedError('only `generator: basic` is currently '
+                'supported'
+            )
+
+        # We need to save the generated YAML in this case, because otherwise we
+        # would lose metadata crucial for analyzing corresponding data, and I
+        # haven't yet figured out a way to do it in Docker (options seem to
+        # exist, but I'd need to provide instructions, test it, etc). So for
+        # now, I'm just not supporting this case. Could manually run generators
+        # in advance (maybe provide instructions for that? or **maybe** have
+        # that be the norm?)
+        if in_docker:
+            raise NotImplementedError('saving generated config from Dockerized '
+                'deployment not yet supported. exiting.'
+            )
+
+        # TODO figure out how to get filename and complete this print
+        # [/ refactor?]
+        #print("Using the 'basic' generator configured with
+        yaml_dict = basic.make_config_dict(generator_yaml_dict)
+
+        generated_yaml_fname = \
+            datetime.now().strftime('%Y%m%d_%H%M%S_stimuli.yaml')
+
+        # TODO TODO TODO allow configuration of path these are saved at? at CLI,
+        # in yaml, env var, or where?
+        print(f'Writing generated YAML to {generated_yaml_fname}')
+        assert not exists(generated_yaml_fname)
+        with open(generated_yaml_fname, 'w') as f:
+            yaml.dump(yaml_dict, f)
+
+        # TODO TODO TODO probably want to save generator_yaml_dict (and
+        # generator too, if user defined...)? maybe as part of a zip file? or
+        # copy alongside w/ diff suffix or something?
+
+        # TODO TODO TODO filter contents of yaml_dict to only necessary stuff if
+        # extra info will cause ParseDict to fail (hardcode for now, find better
+        # solution later)
+
+    # TODO maybe always have ignore_unknown_... True for consistency...
+    json_format.ParseDict(yaml_dict, message,
+        ignore_unknown_fields=ignore_unknown_fields
+    )
 
     return message
 

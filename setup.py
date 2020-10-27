@@ -2,6 +2,10 @@
 
 from setuptools import setup
 
+# TODO TODO add note to Development install instructions saying that editable
+# install won't completely work right (and it won't, right? cause scripts i
+# think?)
+
 setup(
     name='olfactometer',
     # TODO maybe just replace w/ find_package() (to not have to change

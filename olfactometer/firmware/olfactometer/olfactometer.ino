@@ -189,7 +189,7 @@ uint8_t balance_pin = 0;
 // TODO maybe negate this in the variable name so it can effectively default
 // true?
 bool enable_timing_output = false;
-// TODO TODO TODO may need to revert this too
+// TODO TODO TODO may need to revert this too (if so, what was the other value?)
 const uint8_t timing_output_pin = 21;
 
 
@@ -535,6 +535,9 @@ void setup() {
     }
 
     if (! follow_hardware_timing) {
+        // This ultimately calls finish(), which in turn initiates the watchdog
+        // timer based reset, so loop() (and other code below this call) will
+        // not be reached, as intended.
         run_sequence();
     }
 
