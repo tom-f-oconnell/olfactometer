@@ -26,6 +26,11 @@ message Trigger {
 }
 */
 
+// TODO TODO might need to support >1 balance pins if going to need to support
+// multiple manifolds, such that each gets their own MFC, to avoid uneven flow
+// division. unless maybe there is some way to just redo the valves connections
+// to avoid the need for balances?
+
 // TODO cf this implementation w/ just uncommenting the follow_hardware_timing
 // line above...
 message Settings {

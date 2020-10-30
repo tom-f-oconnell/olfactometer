@@ -153,8 +153,17 @@ def load_yaml(yaml_filelike, message=None):
         generated_yaml_fname = \
             datetime.now().strftime('%Y%m%d_%H%M%S_stimuli.yaml')
 
+        # TODO TODO TODO probably want to save the config + version of the code
+        # in the case when a generator isn't used regardless (or at least have
+        # the option to do so...)
+        # TODO might want to use a zipfile to include the extra generator
+        # information in that case. or just always a zipfile then for
+        # consistency?
+
         # TODO TODO TODO allow configuration of path these are saved at? at CLI,
-        # in yaml, env var, or where?
+        # in yaml, env var, or where? default to `generated_stimulus_configs` or
+        # something, if not just zipping with other stuff, then maybe call it
+        # something else?
         print(f'Writing generated YAML to {generated_yaml_fname}')
         assert not exists(generated_yaml_fname)
         with open(generated_yaml_fname, 'w') as f:
@@ -164,21 +173,9 @@ def load_yaml(yaml_filelike, message=None):
         # generator too, if user defined...)? maybe as part of a zip file? or
         # copy alongside w/ diff suffix or something?
 
-        # ignore_unknown_fields argument to ParseDict below didn't seem to work
-        # for me. maybe either a version mismatch or not the behavior i
-        # expected. gonna have to manually filter out stuff not needed for
-        # protobuf messages instead.
-
-        '''
-        # TODO TODO TODO hardcoding which field to keep for now.
-        # find better solution!!!
-        yaml_dict = {k: v for k, v in yaml_dict.items()
-            if k in ('settings', 'pinSequence')
-        }
-        '''
-
     json_format.ParseDict(yaml_dict, message,
-        ignore_unknown_fields=ignore_unknown_fields)
+        ignore_unknown_fields=ignore_unknown_fields
+    )
 
     return message
 

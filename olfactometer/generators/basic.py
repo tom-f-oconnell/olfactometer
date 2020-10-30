@@ -17,6 +17,8 @@ is passed as input to `make_config_dict` below):
 # and the corresponding wiring / available pins / etc on each.
 available_valve_pins: [2, 3, 4]
 
+balance_pin: 5
+
 # If this is False, the odors will be presented in the order in the list below.
 randomize_presentation_order: False
 
@@ -36,8 +38,6 @@ post_pulse_s: 11
 # an additional top-level `randomize_pins2odors: False` or something is present)
 
 import random
-
-import yaml
 
 # (implement either something like this, used in place of yaml loading here, or
 # some OOP thing, when i extend support to a second+ generator)
@@ -60,11 +60,6 @@ def make_config_dict(generator_config_yaml_dict):
     the olfactometer will expect the Python file to have a function with this
     name and this output behavior. 
     """
-    # easier to use a dict given how i'm currently implementing support in
-    # util.py load_yaml, but may want to refactor (or just seek to beginning of
-    # file, after previous yaml.safe_load())
-    #with open(generator_config_yaml_fname, 'r') as f:
-    #    data = yaml.safe_load(f)
     data = generator_config_yaml_dict
 
     # Leaving the validation (bounds checking) to the `olfactometer` script
@@ -206,20 +201,3 @@ def make_config_dict(generator_config_yaml_dict):
 # to that *built-in* generator, rather than specifying the path to a custom
 # generator
 
-# TODO delete / change to something that takes arbitrary input for testing /
-# standalone use. latter only would make sense if not centralizing the
-# standalone generator use support (building on assumption they all return YAML
-# dicts, etc)
-'''
-if __name__ == '__main__':
-    generator_config_yaml_fname = \
-        '/home/tom/src/tom_olfactometer_configs/glomeruli_diagnostics.yaml'
-
-    generated_yaml_dict = make_config_dict(generator_config_yaml_fname)
-
-    from pprint import pprint
-    pprint(generated_yaml_dict)
-
-    print('\n' + '#' * 80)
-    print(yaml.dump(generated_yaml_dict))
-'''
