@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import os
-from os.path import split, join, realpath, abspath, exists
+from os.path import split, join, realpath, abspath, exists, isdir, splitext
 import binascii
 import time
 import subprocess
@@ -9,6 +9,7 @@ import warnings
 import sys
 import tempfile
 from datetime import datetime
+import glob
 
 import serial
 from google.protobuf.internal.encoder import _VarintBytes
@@ -16,7 +17,7 @@ from google.protobuf import json_format, pyext
 import yaml
 
 from olfactometer import upload
-from olfactometer.generators import basic
+from olfactometer.generators import basic, pair_concentration_grid
 
 in_docker = 'OLFACTOMETER_IN_DOCKER' in os.environ
 
@@ -89,6 +90,129 @@ nanopb_options_lines = [x for x in lines if len(x) > 0 and not x[0] == '#']
 # AND might prevent nanopb from optimizing as much from the *.options)
 # TODO TODO and also probably allow seconds / ms units for PulseTiming fields
 
+# TODO depending on how i check for the 'generator' tag in the config, if i'm
+# still going to use that, might want to validate json and yaml equally to check
+# they don't have that tag, if in docker, since what that would trigger
+# currently wouldn't work in docker
+
+
+def check_need_to_preprocess_config(config_path):
+    # TODO update doc to indicate directory case if i'm going to support that
+    """Returns input or new pre-processed config_path, if it input requests it.
+    """
+    # We need to save the generated YAML in this case, because otherwise we
+    # would lose metadata crucial for analyzing corresponding data, and I
+    # haven't yet figured out a way to do it in Docker (options seem to
+    # exist, but I'd need to provide instructions, test it, etc). So for
+    # now, I'm just not supporting this case. Could manually run generators
+    # in advance (maybe provide instructions for that? or **maybe** have
+    # that be the norm?)
+    if in_docker:
+        # We can't read it to check, because that would read to end of stdin,
+        # which is the input in that case. Would need to do some other trick,
+        # which would probably require some light refactoring.
+        warnings.warn('not checking for need to pre-process config, because not'
+            ' currently supported from Dockerized deployment'
+        )
+        return config_path
+
+    # TODO refactor so json case isn't left out from generator handling (or just
+    # drop json support, which might make more sense...)
+    if config_path.endswith('.json'):
+        warnings.warn('not checking for need to pre-process config, because not'
+            ' currently support in the JSON input case'
+        )
+        return config_path
+
+    # Not making an error here just to avoid duplicating validation in input
+    # done in load(...)
+    if not config_path.endswith('.yaml'):
+        return config_path
+
+    with open(config_path, 'r') as f:
+        generator_yaml_dict = yaml.safe_load(f)
+
+    # This means that the protobuf message(s) we define will cause problems if
+    # it ever also would correspond to YAML/JSON with this 'generator' key at
+    # the same level.
+    if 'generator' not in generator_yaml_dict:
+        return config_path
+    else:
+        generator = generator_yaml_dict['generator']
+
+        if generator == 'basic':
+            generator_fn = basic.make_config_dict
+
+        elif generator == 'pair_concentration_grid':
+            generator_fn = pair_concentration_grid.make_config_dict
+
+        else:
+            raise NotImplementedError(f"generator '{generator}' not supported")
+
+        print(f"Using the '{generator}' generator configured with "
+            f"{config_path}"
+        )
+        # Output will be either a dict or a list of dicts. In the latter case,
+        # each should be written to their own YAML file.
+        generated_config = generator_fn(generator_yaml_dict)
+
+        # TODO probably want to save the config + version of the code in the
+        # case when a generator isn't used regardless (or at least have the
+        # option to do so...) (not sure i do want this...)
+        # TODO might want to use a zipfile to include the extra generator
+        # information in that case. or just always a zipfile then for
+        # consistency?
+
+        # TODO TODO allow configuration of path these are saved at? at CLI, in
+        # yaml, env var, or where? default to `generated_stimulus_configs` or
+        # something, if not just zipping with other stuff, then maybe call it
+        # something else?
+
+        # TODO probably want to save generator_yaml_dict (and generator too, if
+        # user defined...)? maybe as part of a zip file? or copy alongside w/
+        # diff suffix or something?
+
+        # TODO might want to refactor so this function can also just return the
+        # file contents it just wrote (to not need to re-read them), but then
+        # again, that's probably pretty trivial...
+
+        # TODO maybe refactor two branches of this conditional to share a bit
+        # more code?
+        if type(generated_config) is dict:
+            yaml_dict = generated_config
+
+            generated_yaml_fname = \
+                datetime.now().strftime('%Y%m%d_%H%M%S_stimuli.yaml')
+
+            print(f'Writing generated YAML to {generated_yaml_fname}')
+            assert not exists(generated_yaml_fname)
+            with open(generated_yaml_fname, 'w') as f:
+                yaml.dump(yaml_dict, f)
+
+            return generated_yaml_fname
+        else:
+            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+            generated_config_dir = timestamp_str + '_stimuli'
+            # TODO maybe also print each filename that is saved?
+            print(f'Writing generated YAML under ./{generated_config_dir}/')
+            assert not exists(generated_config_dir)
+            os.mkdir(generated_config_dir)
+
+            for i, yaml_dict in enumerate(generated_config):
+                assert type(yaml_dict) is dict
+                generated_yaml_fname = join(
+                    generated_config_dir, f'{timestamp_str}_stimuli_{i}.yaml'
+                )
+                assert not exists(generated_yaml_fname)
+                with open(generated_yaml_fname, 'w') as f:
+                    yaml.dump(yaml_dict, f)
+            del generated_yaml_fname
+
+            # TODO test this case (as well as previous branch of this
+            # conditional)
+            return generated_config_dir
+
+
 def load_json(json_filelike, message=None):
     if message is None:
         message = olf_pb2.AllRequiredData()
@@ -105,9 +229,6 @@ def load_yaml(yaml_filelike, message=None):
     present, <x> can currently just be 'basic', but in the future could also be
     the prefix of other builtin generators or paths to user defined generators.
     """
-    # TODO TODO TODO refactor so json case isn't left out from generator
-    # handling (or just drop json support, which might make more sense...)
-
     if message is None:
         message = olf_pb2.AllRequiredData()
 
@@ -116,67 +237,10 @@ def load_yaml(yaml_filelike, message=None):
     # available in ruamel.yaml but not in PyYAML (1.1 only)?
     yaml_dict = yaml.safe_load(yaml_filelike)
 
-    # (the default)
-    ignore_unknown_fields = False
-
-    # This means that the protobuf message(s) we define will cause problems if
-    # it ever also would correspond to YAML with this 'generator' key at the
-    # same level.
-    if 'generator' in yaml_dict:
-        ignore_unknown_fields = True
-
-        generator_yaml_dict = yaml_dict
-        generator = generator_yaml_dict['generator']
-
-        if generator != 'basic':
-            raise NotImplementedError('only `generator: basic` is currently '
-                'supported'
-            )
-
-        # We need to save the generated YAML in this case, because otherwise we
-        # would lose metadata crucial for analyzing corresponding data, and I
-        # haven't yet figured out a way to do it in Docker (options seem to
-        # exist, but I'd need to provide instructions, test it, etc). So for
-        # now, I'm just not supporting this case. Could manually run generators
-        # in advance (maybe provide instructions for that? or **maybe** have
-        # that be the norm?)
-        if in_docker:
-            raise NotImplementedError('saving generated config from Dockerized '
-                'deployment not yet supported. exiting.'
-            )
-
-        # TODO figure out how to get filename and complete this print
-        # [/ refactor?]
-        #print("Using the 'basic' generator configured with
-        yaml_dict = basic.make_config_dict(generator_yaml_dict)
-
-        generated_yaml_fname = \
-            datetime.now().strftime('%Y%m%d_%H%M%S_stimuli.yaml')
-
-        # TODO TODO TODO probably want to save the config + version of the code
-        # in the case when a generator isn't used regardless (or at least have
-        # the option to do so...)
-        # TODO might want to use a zipfile to include the extra generator
-        # information in that case. or just always a zipfile then for
-        # consistency?
-
-        # TODO TODO TODO allow configuration of path these are saved at? at CLI,
-        # in yaml, env var, or where? default to `generated_stimulus_configs` or
-        # something, if not just zipping with other stuff, then maybe call it
-        # something else?
-        print(f'Writing generated YAML to {generated_yaml_fname}')
-        assert not exists(generated_yaml_fname)
-        with open(generated_yaml_fname, 'w') as f:
-            yaml.dump(yaml_dict, f)
-
-        # TODO TODO TODO probably want to save generator_yaml_dict (and
-        # generator too, if user defined...)? maybe as part of a zip file? or
-        # copy alongside w/ diff suffix or something?
-
-    json_format.ParseDict(yaml_dict, message,
-        ignore_unknown_fields=ignore_unknown_fields
-    )
-
+    # Always ignoreing unknown fields for now, so the generators can store extra
+    # metadata for use at analysis only in the same config files.
+    # TODO probably make the JSON case behave the same...
+    json_format.ParseDict(yaml_dict, message, ignore_unknown_fields=True)
     return message
 
 
@@ -575,16 +639,15 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 # olfactometer and other code from one python script. not needed as a command
 # line arg, cause already a separate process at that point.
 # (or would this just make debugging harder, w/o prints from arduino?)
-def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
+def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     allow_version_mismatch=False, ignore_ack=False, try_parse=False,
     timeout_s=2.0, verbose=False):
+    """Runs a single configuration file on the olfactometer.
 
-    if in_docker and config_file is not None:
-        raise ValueError('passing filenames to docker currently not supported. '
-            'instead, redirect stdin from that file. see README for examples.'
-        )
-
-    all_required_data = load(config_file)
+    Args:
+    config_path (str or None): 
+    """
+    all_required_data = load(config_path)
     settings = all_required_data.settings
     pin_sequence = all_required_data.pin_sequence
 
@@ -711,4 +774,55 @@ def main(config_file, port='/dev/ttyACM0', fqbn=None, do_upload=False,
                 except ValueError as e:
                     print(e)
                     print(line)
+
+
+def main(config_path, **kwargs):
+
+    if in_docker and config_path is not None:
+        # TODO reword to be inclusive of directory case?
+        raise ValueError('passing filenames to docker currently not supported. '
+            'instead, redirect stdin from that file. see README for examples.'
+        )
+
+    # TODO TODO if still going to use the 'generator: <x>' k->v in the YAML to
+    # optionally indicate config should be preprocessed into the lower level
+    # type of YAML, check that/do preprocessing here, rather than deep inside
+    # load(...) (and only inside load_yaml(...) at that!)
+
+    # TODO TODO if i'm going to allow config_path to be either a list of files
+    # or a directory with config files, make type consistent (make `config_path`
+    # a list in nargs=1 case)? + don't check for need to preprocess if input is
+    # a list (only support terminal config files in that case)
+    # TODO maybe do support a sequence of config files though (also require to
+    # have suffix ordering them), to generate full diagnostic -> pair ->
+    # diagnostic for my pair experiments? probably not, cause # of pairs i can
+    # actually do will probably vary a lot from fly-to-fly...
+    config_path = check_need_to_preprocess_config(config_path)
+
+    if not isdir(config_path):
+        run(config_path, **kwargs)
+    else:
+        config_files = glob.glob(join(config_path, '*'))
+
+        # We expect each config file to follow this naming convention:
+        # <x>_<n>.[yaml/json], where <x> can be anything (including containing
+        # underscores, if you wish), and <n> is an integer used to order the
+        # config files. Lower numbers will be executed first.
+        order_nums = []
+        for f in config_files:
+            num_part = splitext(split(f)[1])[0].split('_')[-1]
+            try:
+                n = int(num_part)
+                order_nums.append(n)
+            except ValueError:
+                raise ValueError(f'{config_path} had at least one file ({f}) '
+                    'that did not have a number right before the extension, '
+                    'to indicate order. exiting.'
+                )
+        config_files = [f for _, f in sorted(zip(order_nums, config_files),
+            key=lambda x: x[0]
+        )]
+        for config_file in config_files:
+            # TODO maybe print spacers between these?
+            run(config_file, **kwargs)
 

@@ -120,191 +120,184 @@ def make_config_dict(generator_config_yaml_dict):
     # TODO TODO TODO update if using different valve setup
     # All I'm supporting in this super short term, before I come up with some
     # mechanism to split stuff across recordings.
-    assert len(odor_pairs) == 1, \
-        'automatic splitting of >1 pairs not yet implemented'
+    #assert len(odor_pairs) == 1, \
+    #    'automatic splitting of >1 pairs not yet implemented'
 
     n_vials = 2 * n_concentrations + 1
 
-    odor1_name, odor2_name = odor_pairs[0]['pair']
-    assert type(odor1_name) is str
-    assert type(odor2_name) is str
+    # TODO refactor so loop body is just a function call?
+    generated_yaml_dicts = []
+    for pair in odor_pairs:
+        odor1_name, odor2_name = pair['pair']
+        assert type(odor1_name) is str
+        assert type(odor2_name) is str
 
-    odor_vials = [{'name': 'solvent'}]
-    for n in (odor1_name, odor2_name):
-        odor_vials.extend([
-            {'name': n, 'log10_conc': c} for c in global_log10_concentrations
-        ])
+        odor_vials = [{'name': 'solvent'}]
+        for n in (odor1_name, odor2_name):
+            odor_vials.extend([{'name': n, 'log10_conc': c}
+                for c in global_log10_concentrations
+            ])
 
-    # Currently only supporting the case where the trials are all consecutive.
-    n_trials = data['n_trials']
+        # Currently only supporting the case where the trials are all
+        # consecutive.
+        n_trials = data['n_trials']
 
-    n_vials = len(odor_vials)
-    # The '+ 1' is for a solvent blank that is shared between the two odors in
-    # the pair (and likely would be across pairs too).
-    # (The number of vials, since each concentration gets their own. NOT the #
-    # of distinct chemicals; which is 2)
-    assert n_vials == 2 * n_concentrations + 1
-    assert len(available_valve_pins) >= n_vials
+        n_vials = len(odor_vials)
+        # The '+ 1' is for a solvent blank that is shared between the two odors
+        # in the pair (and likely would be across pairs too).
+        # (The number of vials, since each concentration gets their own. NOT the
+        # # of distinct chemicals; which is 2)
+        assert n_vials == 2 * n_concentrations + 1
+        assert len(available_valve_pins) >= n_vials
 
-    # TODO TODO TODO if i use essentially 2 manifolds (or groups of valves) with
-    # one MFC for each, i would probably first want to randomly pick which odor
-    # (and all of its concentrations) gets one side, then randomly order
-    # concentrations within each valve group (because mixtures will always
-    # contain one from one odor and one from the other odor, so there's no point
-    # to having some concentrations of A and B on the same manifold / valve
-    # group)
+        # TODO TODO TODO if i use essentially 2 manifolds (or groups of valves)
+        # with one MFC for each, i would probably first want to randomly pick
+        # which odor (and all of its concentrations) gets one side, then
+        # randomly order concentrations within each valve group (because
+        # mixtures will always contain one from one odor and one from the other
+        # odor, so there's no point to having some concentrations of A and B on
+        # the same manifold / valve group)
 
-    # The means of generating the random odor vial <-> pin (valve) mapping.
-    odor_pins = random.sample(available_valve_pins, n_vials)
+        # The means of generating the random odor vial <-> pin (valve) mapping.
+        odor_pins = random.sample(available_valve_pins, n_vials)
 
-    pins2odors = {p: o for p, o in zip(odor_pins, odor_vials)}
+        pins2odors = {p: o for p, o in zip(odor_pins, odor_vials)}
 
-    randomize_first_ramped_odor = data['randomize_first_ramped_odor']
-    assert randomize_first_ramped_odor in (True, False)
+        randomize_first_ramped_odor = data['randomize_first_ramped_odor']
+        assert randomize_first_ramped_odor in (True, False)
 
-    # TODO modify so only the keys used below (in get_vial) are included, or
-    # modify get_vial so the match works despite any extra keys (just converting
-    # all .items() to tuple will make the matches sensitive to this extra
-    # information)
-    # Just for use within this generator.
-    vials2pins = {tuple(o.items()): p for p, o in pins2odors.items()}
-    def get_vial_tuple(name, log10_conc=None):
-        if log10_conc is None:
-            # TODO TODO TODO modify for case where there are two solvents
-            # (two manifolds / low-flow MFCs)
-            vial_dict = {'name': 'solvent'}
+        # TODO modify so only the keys used below (in get_vial) are included, or
+        # modify get_vial so the match works despite any extra keys (just
+        # converting all .items() to tuple will make the matches sensitive to
+        # this extra information)
+        # Just for use within this generator.
+        vials2pins = {tuple(o.items()): p for p, o in pins2odors.items()}
+        def get_vial_tuple(name, log10_conc=None):
+            if log10_conc is None:
+                # TODO TODO TODO modify for case where there are two solvents
+                # (two manifolds / low-flow MFCs)
+                vial_dict = {'name': 'solvent'}
+            else:
+                assert type(log10_conc) is int or type(log10_conc) is float
+                vial_dict = {'name': name, 'log10_conc': log10_conc}
+            return tuple(vial_dict.items())
+
+        solvent_pin = vials2pins[(('name','solvent'),)]
+        pinlist_at_each_trial = [solvent_pin] * n_trials
+
+        if randomize_first_ramped_odor:
+            if random.choice((True, False)):
+                odor_name_order = (odor1_name, odor2_name)
+            else:
+                odor_name_order = (odor2_name, odor1_name)
         else:
-            assert type(log10_conc) is int or type(log10_conc) is float
-            vial_dict = {'name': name, 'log10_conc': log10_conc}
-        return tuple(vial_dict.items())
-
-    solvent_pin = vials2pins[(('name','solvent'),)]
-    pinlist_at_each_trial = [solvent_pin] * n_trials
-
-    if randomize_first_ramped_odor:
-        if random.choice((True, False)):
             odor_name_order = (odor1_name, odor2_name)
-        else:
-            odor_name_order = (odor2_name, odor1_name)
-    else:
-        odor_name_order = (odor1_name, odor2_name)
-    # To avoid confusion with n1 and n2 below
-    # (i.e. n1 != odor1_name, at least not always).
-    del odor1_name, odor2_name
+        # To avoid confusion with n1 and n2 below
+        # (i.e. n1 != odor1_name, at least not always).
+        del odor1_name, odor2_name
 
-    concentrations = (None,) + tuple(sorted(global_log10_concentrations))
+        concentrations = (None,) + tuple(sorted(global_log10_concentrations))
 
-    # seems to follow the the column order i want if i use this inequality,
-    # rather than i <= j. reversing the variables in each loop (for j -> for i)
-    # would probably have the same effect.
-    index_tuple_lists = [[(i, j)] if i == j else [(i, j), (j, i)]
-        for i in range(len(concentrations))
-        for j in range(len(concentrations)) if j <= i
-    ]
-    # Flatten out the nested lists created above (which were used to order stuff
-    # symmetric across the diagonal at each off-diagonal step)
-    pair_conc_index_order = [x for xs in index_tuple_lists for x in xs]
-    del index_tuple_lists
+        # seems to follow the the column order i want if i use this inequality,
+        # rather than i <= j. reversing the variables in each loop (for j -> for
+        # i) would probably have the same effect.
+        index_tuple_lists = [[(i, j)] if i == j else [(i, j), (j, i)]
+            for i in range(len(concentrations))
+            for j in range(len(concentrations)) if j <= i
+        ]
+        # Flatten out the nested lists created above (which were used to order
+        # stuff symmetric across the diagonal at each off-diagonal step)
+        pair_conc_index_order = [x for xs in index_tuple_lists for x in xs]
+        del index_tuple_lists
 
-    # The '+ 2 * n_concentrations' is for the single-odor case (where the other
-    # is zero concentration, and instead the solvent valve is switched).
-    # This is number of presentations (multplied by n_trials)
-    n_unique_conc_pairs = n_concentrations**2 + 2 * n_concentrations + 1
-    assert len(pair_conc_index_order) == n_unique_conc_pairs
+        # The '+ 2 * n_concentrations' is for the single-odor case (where the
+        # other is zero concentration, and instead the solvent valve is
+        # switched).  This is number of presentations (multplied by n_trials)
+        n_unique_conc_pairs = n_concentrations**2 + 2 * n_concentrations + 1
+        assert len(pair_conc_index_order) == n_unique_conc_pairs
 
-    # The order in `odor_name_order`, and thus which odor name is assigned to
-    # `n1` and which to `n2` determines the order in which they ramp. `n1` ramps
-    # first (though which is ramped alternates between each set of
-    # concentrations).
-    n1, n2 = odor_name_order
+        # The order in `odor_name_order`, and thus which odor name is assigned
+        # to `n1` and which to `n2` determines the order in which they ramp.
+        # `n1` ramps first (though which is ramped alternates between each set
+        # of concentrations).
+        n1, n2 = odor_name_order
 
-    pinlist_at_each_trial = []
-    # Just building this for debugging / display purposes. Could otherwise just
-    # build a list of the corresponding pin-lists.
-    odorlist_at_each_trial = []
+        pinlist_at_each_trial = []
+        # Just building this for debugging / display purposes. Could otherwise
+        # just build a list of the corresponding pin-lists.
+        odorlist_at_each_trial = []
 
-    # Doing this rather than two (nested) for-loops, because we want to do all
-    # combinations of the lower concentrations before moving on to any of the
-    # higher concentrations (of either odor).
-    for conc_idx1, conc_idx2 in pair_conc_index_order:
-        c1 = concentrations[conc_idx1]
-        c2 = concentrations[conc_idx2]
+        # Doing this rather than two (nested) for-loops, because we want to do
+        # all combinations of the lower concentrations before moving on to any
+        # of the higher concentrations (of either odor).
+        for conc_idx1, conc_idx2 in pair_conc_index_order:
+            c1 = concentrations[conc_idx1]
+            c2 = concentrations[conc_idx2]
 
-        o1 = get_vial_tuple(n1, c1)
-        o2 = get_vial_tuple(n2, c2)
+            o1 = get_vial_tuple(n1, c1)
+            o2 = get_vial_tuple(n2, c2)
 
-        # This technically would still fail if (somehow) the order of the
-        # dictionary items is different in get_vial_tuple than it was when
-        # constructing vials2pins above. Probably won't happen though.
-        p1 = vials2pins[o1]
-        p2 = vials2pins[o2]
+            # This technically would still fail if (somehow) the order of the
+            # dictionary items is different in get_vial_tuple than it was when
+            # constructing vials2pins above. Probably won't happen though.
+            p1 = vials2pins[o1]
+            p2 = vials2pins[o2]
 
-        # TODO TODO TODO when using two symmetric odor manifolds, each with
-        # their own MFC always append the balance pin for BOTH (or change
-        # firmware to support multiple balance pins)
+            # TODO TODO TODO when using two symmetric odor manifolds, each with
+            # their own MFC always append the balance pin for BOTH (or change
+            # firmware to support multiple balance pins)
 
-        # Converting to a set first because if p1 == p2 (should only be relevant
-        # in the (0,0) case when all odors are on the same manifold, and thus
-        # there is only one shared solvent vial), we just want to open that
-        # single valve, with all of the flow going through it.
-        pins = sorted({p1, p2})
-        pinlist_at_each_trial.extend([pins] * n_trials)
+            # Converting to a set first because if p1 == p2 (should only be
+            # relevant in the (0,0) case when all odors are on the same
+            # manifold, and thus there is only one shared solvent vial), we just
+            # want to open that single valve, with all of the flow going through
+            # it.
+            pins = sorted({p1, p2})
+            pinlist_at_each_trial.extend([pins] * n_trials)
 
-        # tried using this to improve YAML output format (to avoid references to
-        # the same thing), but it turned out id(...) being the same for
-        # consecutive entries wasn't what the only thing that caused that type
-        # of output (in this list the id(...) of all elements (sublists) are
-        # unique, unlike in the version built w/ .extend, where consecutive
-        # trials have the same id).
-        #for _ in range(n_trials):
-        #    pinlist_at_each_trial.append([pins])
+            # tried using this to improve YAML output format (to avoid
+            # references to the same thing), but it turned out id(...) being the
+            # same for consecutive entries wasn't what the only thing that
+            # caused that type of output (in this list the id(...) of all
+            # elements (sublists) are unique, unlike in the version built w/
+            # .extend, where consecutive trials have the same id).
+            #for _ in range(n_trials):
+            #    pinlist_at_each_trial.append([pins])
 
-        # Again, just used for troubleshooting / display in here. pins above all
-        # that matter for outputs.
-        curr_odors = [o1, o2] if len(pins) > 1 else [o1]
-        odorlist_at_each_trial.extend([curr_odors] * n_trials)
+            # Again, just used for troubleshooting / display in here. pins above
+            # all that matter for outputs.
+            curr_odors = [o1, o2] if len(pins) > 1 else [o1]
+            odorlist_at_each_trial.extend([curr_odors] * n_trials)
 
-    expected_total_n_trials = n_trials * n_unique_conc_pairs
-    assert len(pinlist_at_each_trial) == expected_total_n_trials
-    del expected_total_n_trials
+        expected_total_n_trials = n_trials * n_unique_conc_pairs
+        assert len(pinlist_at_each_trial) == expected_total_n_trials
+        del expected_total_n_trials
 
-    '''
-    from pprint import pprint
-    print('first ramped odor:', n1)
-    print('pinlist_at_each_trial:')
-    pprint(pinlist_at_each_trial)
-    print('odorlist_at_each_trial:')
-    pprint(odorlist_at_each_trial)
-    for i, os in enumerate(odorlist_at_each_trial):
-        print('trial:', i + 1)
-        for o in os:
-            print_odor(dict(o))
-        print()
-    '''
+        # TODO TODO TODO change balance_pin as necessary to support
+        # multiple-manifold case
+        balance_pin = data['balance_pin'] if 'balance_pin' in data else 0
+        timing_output_pin = \
+            data['timing_output_pin'] if 'timing_output_pin' in data else 0
 
-    # TODO TODO TODO change balance_pin as necessary to support
-    # multiple-manifold case
-    balance_pin = data['balance_pin'] if 'balance_pin' in data else 0
-    timing_output_pin = \
-        data['timing_output_pin'] if 'timing_output_pin' in data else 0
-
-    generated_yaml_dict = {
-        'settings': {
-            'timing': {
-                'pre_pulse_us': pre_pulse_us,
-                'pulse_us': pulse_us,
-                'post_pulse_us': post_pulse_us
+        generated_yaml_dict = {
+            'settings': {
+                'timing': {
+                    'pre_pulse_us': pre_pulse_us,
+                    'pulse_us': pulse_us,
+                    'post_pulse_us': post_pulse_us
+                },
+                'balance_pin': balance_pin,
+                'timing_output_pin': timing_output_pin
             },
-            'balance_pin': balance_pin,
-            'timing_output_pin': timing_output_pin
-        },
-        'pin_sequence': {
-            'pin_groups': [{'pins': pins} for pins in pinlist_at_each_trial]
-        },
-        'pins2odors': pins2odors
-    }
+            'pin_sequence': {
+                'pin_groups': [{'pins': pins} for pins in pinlist_at_each_trial]
+            },
+            'pins2odors': pins2odors
+        }
+        generated_yaml_dicts.append(generated_yaml_dict)
 
-    return generated_yaml_dict
+    # TODO want to squeeze output if list is only length 1?
+    return generated_yaml_dicts
 
 
 # TODO delete / change to something that takes arbitrary input for testing /
@@ -324,6 +317,13 @@ if __name__ == '__main__':
     from pprint import pprint
     pprint(generated_yaml_dict)
 
-    print('\n' + '#' * 80)
-    print(yaml.dump(generated_yaml_dict))
+    if type(generated_yaml_dict) is dict:
+        print('\n' + '#' * 80)
+        print(yaml.dump(generated_yaml_dict))
+    else:
+        for yaml_dict in generated_yaml_dict:
+            assert type(yaml_dict) is dict
+            print('\n' + '#' * 80)
+            print(yaml.dump(yaml_dict))
+
 

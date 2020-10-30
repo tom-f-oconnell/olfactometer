@@ -42,7 +42,7 @@ if __name__ == '__main__':
         ' with receipt of message number.'
     )
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
-    parser.add_argument('config_file', type=str, nargs='?', default=None,
+    parser.add_argument('config_path', type=str, nargs='?', default=None,
         help='.json/.yaml file containing all required data. see `load` '
         'function. reads config from stdin if not passed.'
     )
@@ -55,9 +55,9 @@ if __name__ == '__main__':
     try_parse = args.try_parse
     ignore_ack = args.ignore_ack
     verbose = args.verbose
-    config_file = args.config_file
+    config_path = args.config_path
 
-    main(config_file, port=port, fqbn=fqbn, do_upload=do_upload,
+    main(config_path, port=port, fqbn=fqbn, do_upload=do_upload,
         allow_version_mismatch=allow_version_mismatch,
         ignore_ack=ignore_ack, try_parse=try_parse, verbose=verbose
     )
