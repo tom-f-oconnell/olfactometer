@@ -21,6 +21,7 @@ available_valve_pins: [2, 3, 4]
 
 n_trials: 3
 
+randomize_pair_order: True
 randomize_first_ramped_odor: True
 
 # Will also do solvent x each of these concentrations
@@ -28,8 +29,11 @@ global_log10_concentrations: [-5, -4, -3]
 
 odor_pairs:
  - pair:
-   - name: ethyl hexanoate
-   - name: 1-hexanol
+   - ethyl hexanoate
+   - 1-hexanol
+ - pair:
+   - limonene
+   - linalool
 
 # Reformatted into settings.timing.*_us by [this] generator
 pre_pulse_s: 2
@@ -54,18 +58,10 @@ def format_odor(odor_dict):
 def print_odor(odor_dict):
     print(format_odor(odor_dict))
     
-
 # TODO may end up wanting to add support for changing the concentration range
 # for particular odors. probably make global parameters mutually exclusive w/
 # any of those, and have each odor's range specified explicitly if any are, to
 # avoid ambiguity about which numbers apply.
-
-# TODO TODO TODO somehow enable this generator to either specify a sequence of
-# configuration outputs (want to randomize order of pairs too, since we can only
-# do ~1 per recording anyway, w/ # of valves we have to work with, unless maybe
-# i end up actually using 2 full manifolds...)
-# (or keep track of state somehow, so that each invocation picks up in the
-# appropriate place. might be trickier to get that right though...)
 
 def make_config_dict(generator_config_yaml_dict):
     """
@@ -94,36 +90,60 @@ def make_config_dict(generator_config_yaml_dict):
     pulse_us = int(round(pulse_s * us_per_s))
     post_pulse_us = int(round(post_pulse_s * us_per_s))
 
-    available_valve_pins = data['available_valve_pins']
-    assert type(available_valve_pins) is list
-
-    # TODO TODO assuming this flow setup (with only 1 manifold & 2 MFCs) is
-    # actually reasonable at all: i can do without a balance, right? just keep
-    # the solvent flow division valve open? or maybe still keep the balance
-    # separate?
-
     global_log10_concentrations = data['global_log10_concentrations']
     n_concentrations = len(global_log10_concentrations)
 
-    # TODO especially if some pairs have odors w/ diff solvents, maybe have the
-    # grid also include (0, 0) (w/ 2 diff solvents also in panel! probably put
-    # in other keys for individual odors?)
-    # TODO or otherwise, maybe add one for a solvent in each case? but if it's
-    # always gonna be the same solvent anyway, maybe just do one at beginning
-    # and end? not sure...
-    # TODO TODO and if so, always do solvent at beginning? at end? beginning
-    # would be consistent w/ decision to ramp concentrations. end would probably
-    # reflect about the worst-case contamination?
+    # Currently only supporting the case where the trials are all consecutive.
+    n_trials = data['n_trials']
 
     odor_pairs = data['odor_pairs']
 
-    # TODO TODO TODO update if using different valve setup
-    # All I'm supporting in this super short term, before I come up with some
-    # mechanism to split stuff across recordings.
-    #assert len(odor_pairs) == 1, \
-    #    'automatic splitting of >1 pairs not yet implemented'
+    # TODO maybe also support including multiple pairs in one recording,
+    # if we have enough available pins (on each manifold)
+    single_manifold_specific_keys = ['balance_pin', 'available_valve_pins']
 
-    n_vials = 2 * n_concentrations + 1
+    two_manifold_specific_keys = ['group1_balance_pin', 'group2_balance_pin',
+        'available_group1_valve_pins', 'available_group2_valve_pins',
+        'randomize_pairs_to_manifolds'
+    ]
+
+    have_single_manifold_keys = [
+        k in data for k in single_manifold_specific_keys
+    ]
+    have_two_manifold_keys = [
+        k in data for k in two_manifold_specific_keys
+    ]
+    # TODO TODO probably print some stuff to make which manifold setup we are
+    # expecting more clear
+    if any(have_single_manifold_keys):
+        assert all(have_single_manifold_keys)
+        assert not any(have_two_manifold_keys)
+
+        available_valve_pins = data['available_valve_pins']
+        assert type(available_valve_pins) is list
+
+        single_manifold = True
+    else:
+        assert all(have_two_manifold_keys)
+
+        available_group1_valve_pins = data['available_group1_valve_pins']
+        assert type(available_group1_valve_pins) is list
+        available_group2_valve_pins = data['available_group2_valve_pins']
+        assert type(available_group2_valve_pins) is list
+
+        group1_balance_pin = data['group1_balance_pin']
+        group2_balance_pin = data['group2_balance_pin']
+
+        randomize_pairs_to_manifolds = data['randomize_pairs_to_manifolds']
+
+        single_manifold = False
+
+    # TODO TODO check that pins don't overlap across the two manifolds
+    # (including balance_pins)
+
+    randomize_pair_order = data['randomize_pair_order']
+    if randomize_pair_order:
+        random.shuffle(odor_pairs)
 
     # TODO refactor so loop body is just a function call?
     generated_yaml_dicts = []
@@ -132,34 +152,56 @@ def make_config_dict(generator_config_yaml_dict):
         assert type(odor1_name) is str
         assert type(odor2_name) is str
 
-        odor_vials = [{'name': 'solvent'}]
-        for n in (odor1_name, odor2_name):
-            odor_vials.extend([{'name': n, 'log10_conc': c}
-                for c in global_log10_concentrations
-            ])
+        if single_manifold:
+            odor_vials = [{'name': 'solvent'}]
+            for n in (odor1_name, odor2_name):
+                odor_vials.extend([{'name': n, 'log10_conc': c}
+                    for c in global_log10_concentrations
+                ])
+            n_vials = len(odor_vials)
+            # The '+ 1' is for a solvent blank that is shared between the two
+            # odors in the pair (and likely would be across pairs too).
+            # (The number of vials, since each concentration gets their own. NOT
+            # the # of distinct chemicals; which is 2)
+            assert n_vials == 2 * n_concentrations + 1
+            assert len(available_valve_pins) >= n_vials
+            # The means of generating random odor vial <-> pin (valve) mapping.
+            odor_pins = random.sample(available_valve_pins, n_vials)
+        else:
+            # We first want to randomly pick which odor (and all of its
+            # concentrations) gets one valve group (manifold), then randomly
+            # order concentrations within each valve group (because mixtures
+            # will always contain one concentraion of one odor and one of the
+            # other odor, so there's no point to having some concentrations of A
+            # and B on the same manifold / valve group)
+            # Odor name at 0th index = manifold 1 (valve group 1)
+            # Odor name at 1st index = manifold 2 (valve group 2)
+            manifold_odors = [odor1_name, odor2_name]
+            if randomize_pairs_to_manifolds:
+                random.shuffle(manifold_odors)
 
-        # Currently only supporting the case where the trials are all
-        # consecutive.
-        n_trials = data['n_trials']
+            # TODO TODO check no overlap between available pins in the two
+            # groups ("balances" too)
 
-        n_vials = len(odor_vials)
-        # The '+ 1' is for a solvent blank that is shared between the two odors
-        # in the pair (and likely would be across pairs too).
-        # (The number of vials, since each concentration gets their own. NOT the
-        # # of distinct chemicals; which is 2)
-        assert n_vials == 2 * n_concentrations + 1
-        assert len(available_valve_pins) >= n_vials
+            odor_vials = []
+            odor_pins = []
+            for n, available_group_valve_pins in zip(manifold_odors,
+                (available_group1_valve_pins, available_group2_valve_pins)):
 
-        # TODO TODO TODO if i use essentially 2 manifolds (or groups of valves)
-        # with one MFC for each, i would probably first want to randomly pick
-        # which odor (and all of its concentrations) gets one side, then
-        # randomly order concentrations within each valve group (because
-        # mixtures will always contain one from one odor and one from the other
-        # odor, so there's no point to having some concentrations of A and B on
-        # the same manifold / valve group)
+                assert len(available_group_valve_pins) >= n_concentrations + 1
 
-        # The means of generating the random odor vial <-> pin (valve) mapping.
-        odor_pins = random.sample(available_valve_pins, n_vials)
+                group_vials = [{'name': n, 'log10_conc': c}
+                    for c in (None,) + tuple(global_log10_concentrations)
+                ]
+                odor_vials.extend(group_vials)
+
+                odor_pins.extend(random.sample(available_group_valve_pins,
+                    len(group_vials)
+                ))
+
+            assert len(odor_vials) == len(odor_pins)
+            # + 2 here because there MUST be a separate solvent on each manifold
+            assert len(odor_vials) == 2 * n_concentrations + 2
 
         pins2odors = {p: o for p, o in zip(odor_pins, odor_vials)}
 
@@ -173,17 +215,14 @@ def make_config_dict(generator_config_yaml_dict):
         # Just for use within this generator.
         vials2pins = {tuple(o.items()): p for p, o in pins2odors.items()}
         def get_vial_tuple(name, log10_conc=None):
-            if log10_conc is None:
-                # TODO TODO TODO modify for case where there are two solvents
-                # (two manifolds / low-flow MFCs)
+            if single_manifold and log10_conc is None:
                 vial_dict = {'name': 'solvent'}
             else:
-                assert type(log10_conc) is int or type(log10_conc) is float
+                assert (type(log10_conc) is int or type(log10_conc) is float
+                    or (not single_manifold and log10_conc is None)
+                )
                 vial_dict = {'name': name, 'log10_conc': log10_conc}
             return tuple(vial_dict.items())
-
-        solvent_pin = vials2pins[(('name','solvent'),)]
-        pinlist_at_each_trial = [solvent_pin] * n_trials
 
         if randomize_first_ramped_odor:
             if random.choice((True, False)):
@@ -243,16 +282,32 @@ def make_config_dict(generator_config_yaml_dict):
             p1 = vials2pins[o1]
             p2 = vials2pins[o2]
 
-            # TODO TODO TODO when using two symmetric odor manifolds, each with
-            # their own MFC always append the balance pin for BOTH (or change
-            # firmware to support multiple balance pins)
-
             # Converting to a set first because if p1 == p2 (should only be
             # relevant in the (0,0) case when all odors are on the same
             # manifold, and thus there is only one shared solvent vial), we just
             # want to open that single valve, with all of the flow going through
             # it.
             pins = sorted({p1, p2})
+            if not single_manifold:
+                # TODO TODO TODO actually, do i need two solvent vials in the
+                # two manifold case? maybe then i really don't need ANY solvent
+                # vials (since i can exactly halve the flow by only opening a
+                # valve in one of the two manifolds) (maybe i want to keep the
+                # noise level, etc the same too though?)
+
+                assert len(pins) == 2, ('there should be distinct solvent '
+                    'vials in the two manifold case'
+                )
+                # Because there is always going to be one valve opening on each
+                # of the two manifolds, and we will need to close the normally
+                # open valve on each of those manifolds along with that.
+                # Handled differently than "balance_pin" in the single manifold
+                # case because the firmware specifically supports the case where
+                # there is a single balance pin, but it doesn't support two.
+                pins.extend([group1_balance_pin, group2_balance_pin])
+                # TODO TODO TODO check that these pseudo balance pins are
+                # working as an appropriate substitute in two manifold case!
+
             pinlist_at_each_trial.extend([pins] * n_trials)
 
             # tried using this to improve YAML output format (to avoid
@@ -273,9 +328,12 @@ def make_config_dict(generator_config_yaml_dict):
         assert len(pinlist_at_each_trial) == expected_total_n_trials
         del expected_total_n_trials
 
-        # TODO TODO TODO change balance_pin as necessary to support
-        # multiple-manifold case
-        balance_pin = data['balance_pin'] if 'balance_pin' in data else 0
+        if single_manifold:
+            balance_pin = data['balance_pin']
+        else:
+            # TODO check that it's actually disabled in this case
+            balance_pin = 0
+
         timing_output_pin = \
             data['timing_output_pin'] if 'timing_output_pin' in data else 0
 
@@ -295,6 +353,9 @@ def make_config_dict(generator_config_yaml_dict):
             'pins2odors': pins2odors
         }
         generated_yaml_dicts.append(generated_yaml_dict)
+
+    # TODO check log10_conc: None (-> 'null' in YAML) gets parsed correctly back
+    # to None during a round trip
 
     # TODO want to squeeze output if list is only length 1?
     return generated_yaml_dicts

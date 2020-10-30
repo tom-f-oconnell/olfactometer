@@ -665,7 +665,7 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     validate(all_required_data, warn=warn)
 
     if try_parse:
-        sys.exit()
+        return
 
     if ignore_ack:
         warnings.warn('ignore_ack should only be used for debugging')
@@ -797,6 +797,9 @@ def main(config_path, **kwargs):
     # have suffix ordering them), to generate full diagnostic -> pair ->
     # diagnostic for my pair experiments? probably not, cause # of pairs i can
     # actually do will probably vary a lot from fly-to-fly...
+    # TODO add CLI flag to prevent this from saving anything (for testing)
+    # (maybe have the flag also just print the YAML(s) the generator creates
+    # then?)
     config_path = check_need_to_preprocess_config(config_path)
 
     if not isdir(config_path):
