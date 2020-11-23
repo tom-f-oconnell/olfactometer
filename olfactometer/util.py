@@ -322,6 +322,9 @@ def validate_settings(settings, **kwargs):
     if settings.timing_output_pin != 0:
         validate_pin(settings.timing_output_pin)
 
+    if settings.recording_indicator_pin != 0:
+        validate_pin(settings.recording_indicator_pin)
+
     if settings.WhichOneof('control') == 'follow_hardware_timing':
         if not settings.follow_hardware_timing:
             raise ValueError('follow_hardware_timing must be True if using it '

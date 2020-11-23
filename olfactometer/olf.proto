@@ -42,11 +42,17 @@ message Settings {
         PulseTiming timing = 2;
     }
     uint32 balance_pin = 3;
+    // TODO maybe rename to "valve_indicator_pin" or something, to be
+    // consistent w/ the language in recording_indicator_pin
     uint32 timing_output_pin = 4;
     // would need at least --experimental_allow_proto3_optional, and not sure
     // that would work + w/ nanopb
     //optional bool no_ack = 4;
     bool no_ack = 5;
+    // TODO TODO TODO support me elsewhere (w/ 0 to disable) + maybe add
+    // equivalent of ITI in Remy's arduino script, for periods where this is
+    // also low betweeen blocks / trials
+    uint32 recording_indicator_pin = 6;
 }
 
 // Not intending to use this outside of PinSequence, but the syntax seems

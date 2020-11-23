@@ -189,6 +189,8 @@ uint8_t balance_pin = 0;
 // firmware produces (without knowing which pin it was pulsing).
 uint8_t timing_output_pin = 0;
 
+uint8_t recording_indicator_pin = 0;
+
 
 // TODO TODO also add an optional pin to signal the pin thats getting switched
 // (as before)
@@ -204,6 +206,9 @@ bool pin_is_reserved(uint8_t pin) {
         return true;
     }
     if (timing_output_pin && pin == timing_output_pin) {
+        return true;
+    }
+    if (recording_indicator_pin && pin == recording_indicator_pin) {
         return true;
     }
     for (uint8_t i=0; i<sizeof reserved_pins/sizeof reserved_pins[0]; i++) {
@@ -324,6 +329,12 @@ inline void busy_wait_us(unsigned long interval_us) {
 // TODO TODO compare timing accuracy with w/o some interrupt based
 // implementation (would timer interrupts really help? when?)
 void run_sequence() {
+    // TODO probably add other parameters to have this go low periodically too,
+    // if allowing recovery from laser power actually has a place...
+    if (recording_indicator_pin) {
+        digitalWrite(recording_indicator_pin, HIGH);
+    }
+
     // TODO TODO was the casting the serial.prints did with the same rhs values
     // actually necessary (needed here?)?
     unsigned long pre_pulse_us = settings.control.timing.pre_pulse_us;
@@ -347,8 +358,6 @@ void run_sequence() {
 
         print_trial_status(i + 1, &group);
 
-        // TODO TODO TODO also implement balance, timing output, and anything
-        // else not specific to external (input) timing case here!
         busy_wait_us(pre_pulse_us);
 
         if (balance_pin) {
@@ -371,6 +380,12 @@ void run_sequence() {
 
         busy_wait_us(post_pulse_us);
     }
+
+    // TODO maybe sure this is on a pin that bootloader doesn't send high
+    if (recording_indicator_pin) {
+        digitalWrite(recording_indicator_pin, LOW);
+    }
+
     finish();
 }
 
@@ -427,6 +442,7 @@ void setup() {
 
     balance_pin = settings.balance_pin;
     timing_output_pin = settings.timing_output_pin;
+    recording_indicator_pin = settings.recording_indicator_pin;
 
     if (settings.which_control == Settings_follow_hardware_timing_tag) {
         follow_hardware_timing = settings.control.follow_hardware_timing;
@@ -510,6 +526,10 @@ void setup() {
     }
     if (timing_output_pin) {
         pinMode(timing_output_pin, OUTPUT);
+    }
+    if (recording_indicator_pin) {
+        pinMode(recording_indicator_pin, OUTPUT);
+        digitalWrite(recording_indicator_pin, LOW);
     }
 
     if (follow_hardware_timing) {
