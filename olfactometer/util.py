@@ -10,6 +10,7 @@ import sys
 import tempfile
 from datetime import datetime
 import glob
+import json
 
 import serial
 from google.protobuf.internal.encoder import _VarintBytes
@@ -31,6 +32,12 @@ this_package_dir = split(abspath(realpath(__file__)))[0]
 
 assert exists(this_package_dir), \
     f'this_package_dir={this_package_dir} does not exist'
+
+# TODO TODO TODO (a bit hacky, but...) maybe i could atexit make a new
+# connection to the same port to reset the Arduino? assuming it does reset on
+# serial connection initiation, and there isn't some other call i could be
+# making to signal to the arduino similarly, in a way that wouldn't require
+# making a connection with no intention of using it
 
 # TODO need to specify path to .proto file when this is installed as a script
 # (probably need to put it in some findable location using setuptools...)
@@ -234,35 +241,41 @@ def check_need_to_preprocess_config(config_path):
             return generated_config_dir
 
 
-def load_json(json_filelike, message=None):
-    if message is None:
-        message = olf_pb2.AllRequiredData()
-    json_data = json_filelike.read()
-    # filelike does not work here. str does.
-    json_format.Parse(json_data, message)
-    return message
-
-
-def load_yaml(yaml_filelike, message=None):
-    """Returns a populated protobuf message with data from YAML config.
-
-    Will also look for a `generator: <x>` entry in the top-level of the YAML. If
-    present, <x> can currently just be 'basic', but in the future could also be
-    the prefix of other builtin generators or paths to user defined generators.
+def _load_helper(filelike2dict_fn, filelike, message=None):
+    """Returns a protobuf message with data from config and extra metadata.
     """
     if message is None:
         message = olf_pb2.AllRequiredData()
 
-    # TODO safe_load accept str / filelike or both?
+    config_dict = filelike2dict_fn(filelike)
+
+    # Always ignoring unknown fields for now, so the generators can store extra
+    # metadata for use at analysis only in the same config files.
+    json_format.ParseDict(config_dict, message, ignore_unknown_fields=True)
+    return message, config_dict
+
+
+# TODO update any unit tests involving load_json / load_yaml to ignore new
+# second return argument (extra_metadata)
+
+def load_json(json_filelike, message=None):
+    '''
+    # ...
+    json_data = json_filelike.read()
+    # filelike does not work here. str does.
+    json_format.Parse(json_data, message,
+        ignore_unknown_fields=_ignore_unknown_fields
+    )
+    # ...
+    '''
+    # TODO unit test this change to json loading
+    return _load_helper(json.load, json_filelike, message=message)
+
+
+def load_yaml(yaml_filelike, message=None):
     # TODO do we actually need any of the yaml 1.2(+?) features
     # available in ruamel.yaml but not in PyYAML (1.1 only)?
-    yaml_dict = yaml.safe_load(yaml_filelike)
-
-    # Always ignoreing unknown fields for now, so the generators can store extra
-    # metadata for use at analysis only in the same config files.
-    # TODO probably make the JSON case behave the same...
-    json_format.ParseDict(yaml_dict, message, ignore_unknown_fields=True)
-    return message
+    return _load_helper(yaml.safe_load, yaml_filelike, message=message)
 
 
 def load(json_or_yaml_path=None):
@@ -288,6 +301,9 @@ def load(json_or_yaml_path=None):
             assert in_docker
             raise IOError('you must use the -i flag with docker run')
 
+        # TODO check output of yaml dumping w/ default_flow_style=True again.
+        # that might be an example of a case where YAML also would trigger this,
+        # in which case i might want to do something different to detect JSON...
         if stdin_str.lstrip()[0] == '{':
             suffix = '.json'
         else:
@@ -302,14 +318,16 @@ def load(json_or_yaml_path=None):
 
     with open(json_or_yaml_path, 'r') as f:
         if json_or_yaml_path.endswith('.json'):
-            load_json(f, all_required_data)
+            # First return argument is just the same as the second argument. No
+            # need to store it again, as it's mutated.
+            _, config_dict = load_json(f, all_required_data)
 
         elif json_or_yaml_path.endswith('.yaml'):
-            load_yaml(f, all_required_data)
+            _, config_dict = load_yaml(f, all_required_data)
         else:
             raise ValueError('file must end with either .json or .yaml')
 
-    return all_required_data
+    return all_required_data, config_dict
 
 
 def max_count(name):
@@ -698,6 +716,26 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
             print(f'Time to msg num ack: {time_to_msgnum_ack:.3f}')
 
 
+# TODO TODO also support mixtures (separate fn probably)
+def format_odor(odor_dict):
+    odor_str = odor_dict['name']
+    if 'log10_conc' in odor_dict:
+        log10_conc = odor_dict['log10_conc']
+        # This is my convention for indicating the solvent used for a particular
+        # odor, in at least the experiments using pair_concentration_grid.py.
+        if log10_conc is None:
+            return f'solvent for {odor_str}'
+
+        # TODO limit precision if float
+        odor_str += ' @ {}'.format(log10_conc)
+
+    return odor_str
+
+
+def print_odor(odor_dict):
+    print(format_odor(odor_dict))
+    
+
 # TODO TODO maybe add a block=True flag to allow (w/ =False) to return, to not
 # need to start this function in a new thread or process when trying to run the
 # olfactometer and other code from one python script. not needed as a command
@@ -710,7 +748,8 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 baud_rate = None
 def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     allow_version_mismatch=False, ignore_ack=False, try_parse=False,
-    timeout_s=2.0, verbose=False, _first_run=True):
+    timeout_s=2.0, pause_for_odor_connecting=True, verbose=False,
+    _first_run=True):
     """Runs a single configuration file on the olfactometer.
 
     Args:
@@ -724,7 +763,8 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     # file. If there are multiple, the Arduino sketch should reset between them.
     curr_msg_num = 0
 
-    all_required_data = load(config_path)
+    # TODO rename all_required_data to indicate it is the protobuf message(s)?
+    all_required_data, config_dict = load(config_path)
     settings = all_required_data.settings
     pin_sequence = all_required_data.pin_sequence
 
@@ -753,6 +793,9 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         # Default is False
         settings.no_ack = True
 
+    # TODO maybe factor all this first_run stuff into its own fn and call before
+    # first run() call in sequence case, so the first "Config file: ..." doesn't
+    # have the warnings and baud rate between it and the rest (for consistency)?
     if not _first_run:
         assert baud_rate is not None
     else:
@@ -802,6 +845,29 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         # again.
         baud_rate = parse_baud_from_sketch()
         print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
+
+    # TODO TODO and if we have pins2odors, also probably replace trial printing
+    # with stuff that has the odor [mixtures] formatted (notion of blocks of
+    # repeats, too? probably not... needs more info)
+    # (though trial prints currently actually come from the arduino...)
+    # TODO might need to include balance pins in input to odor formatting thing,
+    # unless we just assume all pins not in pins2odors are OK to ignore for
+    # formatting (should be true anyway...)
+
+    # TODO (low priority) maybe only print pins that differ relative to last
+    # pins2odors, in a sequence? or indicate those that are the same?
+    if 'pins2odors' in config_dict:
+        pins2odors = config_dict['pins2odors']
+
+        print('Pins to connect odors to:')
+        for p, o in pins2odors.items():
+            print(f' {p}: {format_odor(o)}')
+
+    # TODO thread a command line arg through for this one probably
+    # (have default w/ no arg passed to pause)
+    if pause_for_odor_connecting:
+        # TODO maybe warn if no pins2odors, in this case
+        input('Press Enter once the odors are connected')
 
     # TODO TODO define some class that has its own context manager that maybe
     # essentially wraps the Serial one? (just so people don't need that much
@@ -874,11 +940,6 @@ def main(config_path, **kwargs):
         raise ValueError('passing filenames to docker currently not supported. '
             'instead, redirect stdin from that file. see README for examples.'
         )
-
-    # TODO TODO if still going to use the 'generator: <x>' k->v in the YAML to
-    # optionally indicate config should be preprocessed into the lower level
-    # type of YAML, check that/do preprocessing here, rather than deep inside
-    # load(...) (and only inside load_yaml(...) at that!)
 
     # TODO TODO if i'm going to allow config_path to be either a list of files
     # or a directory with config files, make type consistent (make `config_path`

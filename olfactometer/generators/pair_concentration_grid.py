@@ -48,16 +48,6 @@ post_pulse_s: 11
 import random
 
 
-# TODO factor format/print fns to some share space
-def format_odor(odor_dict):
-    odor_str = odor_dict['name']
-    if 'log10_conc' in odor_dict:
-        odor_str += ' {}'.format(odor_dict['log10_conc'])
-    return odor_str
-
-def print_odor(odor_dict):
-    print(format_odor(odor_dict))
-    
 # TODO may end up wanting to add support for changing the concentration range
 # for particular odors. probably make global parameters mutually exclusive w/
 # any of those, and have each odor's range specified explicitly if any are, to
