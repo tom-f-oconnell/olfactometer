@@ -125,6 +125,10 @@ def make_config_dict(generator_config_yaml_dict):
     timing_output_pin = \
         data['timing_output_pin'] if 'timing_output_pin' in data else 0
 
+    recording_indicator_pin = (data['recording_indicator_pin'] if
+        'recording_indicator_pin' in data else 0
+    )
+
     generated_yaml_dict = {
         'settings': {
             'timing': {
@@ -133,7 +137,8 @@ def make_config_dict(generator_config_yaml_dict):
                 'post_pulse_us': post_pulse_us
             },
             'balance_pin': balance_pin,
-            'timing_output_pin': timing_output_pin
+            'timing_output_pin': timing_output_pin,
+            'recording_indicator_pin': recording_indicator_pin,
         },
         # TODO make a util function to generate this from list of lists of
         # integers?

@@ -63,6 +63,19 @@ def print_odor(odor_dict):
 # any of those, and have each odor's range specified explicitly if any are, to
 # avoid ambiguity about which numbers apply.
 
+# TODO left pad ints up to max num digits used (for case where multple YAMLs are
+# written, and each has a number in their name), so printing out sorted by name
+# lists them in order
+
+# TODO print which YAML file is being used, when reading through a sequence?
+# TODO and maybe also print how many trials / time for that file?
+
+# TODO TODO maybe generalize how valve groups are implemented to just putting
+# available_valve_pins / balance_pin under a YAML / JSON iterable, with perhaps
+# an optional `name` key to give something to print when telling the user what
+# to connect to what (include in functions shared by all generators though,
+# probably)
+
 def make_config_dict(generator_config_yaml_dict):
     """
     Args:
@@ -337,6 +350,10 @@ def make_config_dict(generator_config_yaml_dict):
         timing_output_pin = \
             data['timing_output_pin'] if 'timing_output_pin' in data else 0
 
+        recording_indicator_pin = (data['recording_indicator_pin']
+            if 'recording_indicator_pin' in data else 0
+        )
+
         generated_yaml_dict = {
             'settings': {
                 'timing': {
@@ -345,7 +362,8 @@ def make_config_dict(generator_config_yaml_dict):
                     'post_pulse_us': post_pulse_us
                 },
                 'balance_pin': balance_pin,
-                'timing_output_pin': timing_output_pin
+                'timing_output_pin': timing_output_pin,
+                'recording_indicator_pin': recording_indicator_pin,
             },
             'pin_sequence': {
                 'pin_groups': [{'pins': pins} for pins in pinlist_at_each_trial]

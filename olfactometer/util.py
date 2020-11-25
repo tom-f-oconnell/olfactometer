@@ -176,6 +176,23 @@ def check_need_to_preprocess_config(config_path):
         # file contents it just wrote (to not need to re-read them), but then
         # again, that's probably pretty trivial...
 
+        # TODO should i be using safe_dump instead? (modify SafeDumper instead
+        # of Dumper if so)
+        # So that there are not aliases (references) within the generated YAML
+        # (they make it less readable).
+        # https://stackoverflow.com/questions/13518819
+        yaml.Dumper.ignore_aliases = lambda *args : True
+
+        # TODO what is default_style kwarg to pyyaml dump? docs don't seem to
+        # say...
+        # TODO maybe i want to make a custom dumper that just uses this style
+        # for pin groups though? right now it's pretty ugly when everything is
+        # using this style...
+        # Setting this to True would make lists single-line by default, which I
+        # want for terminal stuff, but I don't like what this flow style does
+        # elsewhere.
+        default_flow_style = False
+
         # TODO maybe refactor two branches of this conditional to share a bit
         # more code?
         if type(generated_config) is dict:
@@ -187,7 +204,8 @@ def check_need_to_preprocess_config(config_path):
             print(f'Writing generated YAML to {generated_yaml_fname}')
             assert not exists(generated_yaml_fname)
             with open(generated_yaml_fname, 'w') as f:
-                yaml.dump(yaml_dict, f)
+                yaml.dump(yaml_dict, f, default_flow_style=default_flow_style)
+            print()
 
             return generated_yaml_fname
         else:
@@ -205,8 +223,11 @@ def check_need_to_preprocess_config(config_path):
                 )
                 assert not exists(generated_yaml_fname)
                 with open(generated_yaml_fname, 'w') as f:
-                    yaml.dump(yaml_dict, f)
+                    yaml.dump(yaml_dict, f,
+                        default_flow_style=default_flow_style
+                    )
             del generated_yaml_fname
+            print()
 
             # TODO test this case (as well as previous branch of this
             # conditional)
@@ -311,10 +332,32 @@ def max_count(name):
     raise ValueError(f'no lines starting with name={name}')
 
 
+def validate_port(port):
+    """Raises ValueError if port seems invalid.
+    
+    Not currently intended to catch all possible invalid values, just some
+    likely mistakes.
+    """
+    if type(port) is not str:
+        raise ValueError('port not a str. did you pass it with -p?')
+
+    # TODO TODO don't i have some code to detect port (at least in dev install
+    # case?)? is that just in upload.py? not used here? i don't see anything
+    # like that used to define port below...
+    if port.endswith('.yaml') or port.endswith('.json'):
+        raise ValueError('specify port after -p. currently this seems to be the'
+            'config file path.'
+        )
+    
+    # TODO actually check against what ports the system could have somehow?
+
+
 # TODO TODO figure out max pulse feature size (micros overflow period, i think,
 # divided by 2 [- 1?]?). check none of  [pre/post_]pulse_us / pulse_us are
 # longer
 def validate_settings(settings, **kwargs):
+    """Raises ValueError if invalid settings are detected.
+    """
     # 0 = disabled.
     if settings.balance_pin != 0:
         validate_pin(settings.balance_pin)
@@ -355,6 +398,13 @@ def validate_pin_sequence(pin_sequence, warn=True):
 # (basically trying to duplicated the pin_is_reserved check on the arduino side,
 # on top of other basic bounds checking)
 def validate_pin(pin):
+    """Raises ValueError in many cases where pin would fail on Arduino side.
+
+    If an error is raised, the pin would definitely be invalid, but if no error
+    is raised there are still some cases where the pin would not produce the
+    intended results, as this has no knowledge of which pins are actually used
+    on the Arduino, nor which version of an Arduino is being used.
+    """
     assert type(pin) is int
     if pin < 0:
         raise ValueError('pin must be positive')
@@ -369,6 +419,8 @@ def validate_pin(pin):
 
 
 def validate_pin_group(pin_group, **kwargs):
+    """Raises ValueError if invalid pin_group is detected.
+    """
     mc = max_count('PinGroup.pins')
     gc = len(pin_group.pins)
     if gc == 0:
@@ -450,6 +502,13 @@ def validate(msg, warn=True, _first_call=True):
 
 
 def parse_baud_from_sketch():
+    """Returns int baud rate parsed from the firmware .ino.
+
+    Raises ValueError if baud rate cannot be parsed.
+
+    Used to determine which baud rate the host computer should use when trying
+    to communicate with the Arduino via serial (USB).
+    """
     sketch = join(this_package_dir, 'firmware', 'olfactometer',
         'olfactometer.ino'
     )
@@ -642,13 +701,19 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 # olfactometer and other code from one python script. not needed as a command
 # line arg, cause already a separate process at that point.
 # (or would this just make debugging harder, w/o prints from arduino?)
+# TODO TODO make sure version_mismatch checks that installed version is the used
+# version, if/when doing things that way (e.g. catch the case where the version
+# of util.py from the cwd, if cwd=~/src/olfactometer) has changes not reflected
+# in the version of the installed `olf` script)
 def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     allow_version_mismatch=False, ignore_ack=False, try_parse=False,
     timeout_s=2.0, verbose=False):
     """Runs a single configuration file on the olfactometer.
 
     Args:
-    config_path (str or None): 
+    config_path (str or None): path to YAML or JSON file with settings
+        defining the olfactometer behavior. If `None` is passed, the config is
+        read from stdin.
     """
     all_required_data = load(config_path)
     settings = all_required_data.settings
@@ -660,6 +725,8 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     # (if defaults to 0, remove my reimplementation of that logic in basic
     # generator)
 
+    # TODO especially if i print the YAML name before each in a sequence (when
+    # running a sequence of YAML files), also print it here
     if verbose or try_parse:
         print('Config data:')
         print(all_required_data)
@@ -710,9 +777,11 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         py_version_str == upload.no_clean_hash_str):
 
         raise ValueError('can not run with uncommitted changes without '
-            'allow_version_mismatch, which is only for debugging. '
+            'allow_version_mismatch (-a), which is only for debugging. '
             'please commit and re-upload.'
         )
+
+    validate_port(port)
 
     baud_rate = parse_baud_from_sketch()
     print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
@@ -780,7 +849,6 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
 
 
 def main(config_path, **kwargs):
-
     if in_docker and config_path is not None:
         # TODO reword to be inclusive of directory case?
         raise ValueError('passing filenames to docker currently not supported. '
