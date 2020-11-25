@@ -679,7 +679,9 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 
             arduino_msg_num = int.from_bytes(arduino_msg_num_byte, 'big')
             if arduino_msg_num != curr_msg_num:
-                raise RuntimeError('arduino sent wrong message num')
+                raise RuntimeError('arduino sent wrong message num. '
+                    f'expected {curr_msg_num}, got {arduino_msg_num}.'
+                )
 
         # TODO test wraparound behavior (+ w/ arduino)
         curr_msg_num = (curr_msg_num + 1) % MAX_MSG_NUM
@@ -705,9 +707,10 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 # version, if/when doing things that way (e.g. catch the case where the version
 # of util.py from the cwd, if cwd=~/src/olfactometer) has changes not reflected
 # in the version of the installed `olf` script)
+baud_rate = None
 def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     allow_version_mismatch=False, ignore_ack=False, try_parse=False,
-    timeout_s=2.0, verbose=False):
+    timeout_s=2.0, verbose=False, _first_run=True):
     """Runs a single configuration file on the olfactometer.
 
     Args:
@@ -715,6 +718,12 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         defining the olfactometer behavior. If `None` is passed, the config is
         read from stdin.
     """
+    global curr_msg_num
+    global baud_rate
+    # We want to reset this at the beginning of each run of a single config
+    # file. If there are multiple, the Arduino sketch should reset between them.
+    curr_msg_num = 0
+
     all_required_data = load(config_path)
     settings = all_required_data.settings
     pin_sequence = all_required_data.pin_sequence
@@ -738,53 +747,62 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         return
 
     if ignore_ack:
-        warnings.warn('ignore_ack should only be used for debugging')
+        if _first_run:
+            warnings.warn('ignore_ack should only be used for debugging')
+
         # Default is False
         settings.no_ack = True
 
-    if allow_version_mismatch:
-        warnings.warn('allow_version_mismatch should only be used for '
-            'debugging!'
+    if not _first_run:
+        assert baud_rate is not None
+    else:
+        if allow_version_mismatch:
+            warnings.warn('allow_version_mismatch should only be used for '
+                'debugging!'
+            )
+
+        # TODO maybe move this function in here...
+        py_version_str = upload.version_str()
+        # update check not working yet
+        '''
+        py_version_str = upload.version_str(update_check=True,
+            update_on_prompt=True
         )
+        '''
 
-    # TODO maybe move this function in here...
-    py_version_str = upload.version_str()
-    # update check not working yet
-    '''
-    py_version_str = upload.version_str(update_check=True,
-        update_on_prompt=True
-    )
-    '''
+        if do_upload:
+            # TODO save file modification time at upload and check if it has
+            # changed before re-uploading with this flag... (just to save
+            # program memory life...) (docker couldn't use...)
 
-    if do_upload:
-        # TODO save file modification time at upload and check if it has changed
-        # before re-uploading with this flag... (just to save program memory
-        # life...) (docker couldn't use...)
+            # TODO maybe refactor back and somehow have a new section of
+            # argparser filled in without flags here, indicating they are upload
+            # specific flags. idiomatic way to do that? subcommand?
 
-        # TODO maybe refactor back and somehow have a new section of argparser
-        # filled in without flags here, indicating they are upload specific
-        # flags. idiomatic way to do that? subcommand?
+            # This raises a RuntimeError if the compilation / upload returns a
+            # non-zero exit status, stopping further steps here, as intended.
+            upload.main(port=port, fqbn=fqbn, verbose=verbose)
 
-        # This raises a RuntimeError if the compilation / upload returns a
-        # non-zero exit status, stopping further steps here, as intended.
-        upload.main(port=port, fqbn=fqbn)
+        # TODO TODO also lookup latest hash on github and check that it's not in
+        # any of the hashes in our history (git log), and warn / prompt about
+        # update if github version is newer
 
-    # TODO TODO also lookup latest hash on github and check that it's not in any
-    # of the hashes in our history (git log), and warn / prompt about update if
-    # github version is newer
+        if (not allow_version_mismatch and
+            py_version_str == upload.no_clean_hash_str):
 
-    if (not allow_version_mismatch and
-        py_version_str == upload.no_clean_hash_str):
+            raise ValueError('can not run with uncommitted changes without '
+                'allow_version_mismatch (-a), which is only for debugging. '
+                'please commit and re-upload.'
+            )
 
-        raise ValueError('can not run with uncommitted changes without '
-            'allow_version_mismatch (-a), which is only for debugging. '
-            'please commit and re-upload.'
-        )
+        validate_port(port)
 
-    validate_port(port)
+        # This is set into a global variable, so that on subsequent config files
+        # in the same run of this script, it doesn't need to be parsed / printed
+        # again.
+        baud_rate = parse_baud_from_sketch()
+        print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
 
-    baud_rate = parse_baud_from_sketch()
-    print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
     # TODO TODO define some class that has its own context manager that maybe
     # essentially wraps the Serial one? (just so people don't need that much
     # boilerplate, including explicit calls to pyserial, when using this in
@@ -805,21 +823,23 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
                     're-run with -u if not.'
                 )
 
-        if not allow_version_mismatch:
-            if arduino_version_str == upload.no_clean_hash_str:
-                raise ValueError('arduino code came from dirty git state. '
-                    'please commit and re-upload.'
-                )
+            if _first_run:
+                if not allow_version_mismatch:
+                        if arduino_version_str == upload.no_clean_hash_str:
+                            raise ValueError('arduino code came from dirty git'
+                                ' state. please commit and re-upload.'
+                            )
 
-            if py_version_str != arduino_version_str:
-                raise ValueError(f'version mismatch (Python: {py_version_str}, '
-                    f'Arduino: {arduino_version_str})! please re-upload (add '
-                    'the -u flag)!'
-                )
+                        if py_version_str != arduino_version_str:
+                            raise ValueError('version mismatch (Python: '
+                                f'{py_version_str}, Arduino: '
+                                f'{arduino_version_str})! please re-upload (add'
+                                ' the -u flag)!'
+                            )
 
-        elif verbose:
-            print('Python version:', py_version_str)
-            print('Arduino version:', arduino_version_str)
+                elif verbose:
+                    print('Python version:', py_version_str)
+                    print('Arduino version:', arduino_version_str)
 
         write_message(ser, settings, ignore_ack=ignore_ack, verbose=verbose)
 
@@ -896,7 +916,21 @@ def main(config_path, **kwargs):
         config_files = [f for _, f in sorted(zip(order_nums, config_files),
             key=lambda x: x[0]
         )]
-        for config_file in config_files:
-            # TODO maybe print spacers between these?
-            run(config_file, **kwargs)
+
+        first_run = True
+        for i, config_file in enumerate(config_files):
+            # TODO maybe (in addition to some abstractions / standards for
+            # formatting odors in trials (rather than pins)) also have some
+            # faculties for summarizing config files, and print that alongside /
+            # in place of the file name? (e.g. the odors in the pair, for the
+            # pair conc grid experiments)?
+            print(f'Config file: {config_file} ({i+1}/{len(config_files)})')
+
+            run(config_file, _first_run=first_run, **kwargs)
+
+            if i < len(config_files) - 1:
+                print()
+
+            if first_run:
+                first_run = False
 
