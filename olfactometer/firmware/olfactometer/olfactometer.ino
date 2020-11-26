@@ -510,11 +510,18 @@ void setup() {
 
     // hack to try to prevent the flipper mirror (currently on pin 33) from
     // switching (if left in mode where it can be controlled by this pin...)
+    // TODO TODO TODO why didn't this even work? are my electronics screwed up
+    // somewhere? something else unexpectedly using pin 33? small changes in
+    // voltage to do non-ideal electronics and low flipper mirror digital
+    // thresholds? maybe the fact that remy's (unpowered) arduino is also
+    // connected in parallel has something to do with it? bootloader?
+    // maybe oscilloscope this...
     // TODO delete. try to set all pins to OUTPUT, LOW (how to find all
     // available pins though? or can i rely on no-op for pinMode w/ invalid
     // pins?). or just leave floating till i use this pin...
-    pinMode(33, OUTPUT);
-    digitalWrite(33, LOW); 
+    //pinMode(33, OUTPUT);
+    //digitalWrite(33, LOW); 
+    //
 
     #ifdef DEBUG_PRINTS
     Serial.println("unique output pins:");
