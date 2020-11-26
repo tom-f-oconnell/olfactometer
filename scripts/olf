@@ -41,6 +41,15 @@ if __name__ == '__main__':
         'makes viewing all debug prints easier, as no worry they will interfere'
         ' with receipt of message number.'
     )
+    # TODO document OLFACTOMETER_DEFAULT_HARDWARE, and interactions with the
+    # same keys already present in some YAML
+    # TODO maybe use defs of these env vars from util rather than retyping here
+    parser.add_argument('-r', '--hardware', action='store', default=None,
+        help='[path to / prefix of] config specifying available valve pins and'
+        'other important pins for a particular physical olfactometer. config '
+        'must be under OLFACTOMETER_HARDWARE_DIR to refer by prefix. see also '
+        'OLFACTOMETER_DEFAULT_HARDWARE.'
+    )
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
     parser.add_argument('config_path', type=str, nargs='?', default=None,
         help='.json/.yaml file containing all required data. see `load` '
@@ -54,10 +63,12 @@ if __name__ == '__main__':
     allow_version_mismatch = args.allow_version_mismatch
     try_parse = args.try_parse
     ignore_ack = args.ignore_ack
+    hardware_config = args.hardware
     verbose = args.verbose
     config_path = args.config_path
 
     main(config_path, port=port, fqbn=fqbn, do_upload=do_upload,
         allow_version_mismatch=allow_version_mismatch,
-        ignore_ack=ignore_ack, try_parse=try_parse, verbose=verbose
+        ignore_ack=ignore_ack, try_parse=try_parse,
+        hardware_config=hardware_config, verbose=verbose
     )

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 import os
-from os.path import split, join, realpath, abspath, exists, isdir, splitext
+from os.path import split, join, realpath, abspath, exists, isdir, splitext, \
+    isfile
 import binascii
 import time
 import subprocess
@@ -18,7 +19,7 @@ from google.protobuf import json_format, pyext
 import yaml
 
 from olfactometer import upload
-from olfactometer.generators import basic, pair_concentration_grid
+from olfactometer.generators import common, basic, pair_concentration_grid
 
 in_docker = 'OLFACTOMETER_IN_DOCKER' in os.environ
 
@@ -103,7 +104,7 @@ nanopb_options_lines = [x for x in lines if len(x) > 0 and not x[0] == '#']
 # currently wouldn't work in docker
 
 
-def check_need_to_preprocess_config(config_path):
+def check_need_to_preprocess_config(config_path, hardware_config=None):
     # TODO update doc to indicate directory case if i'm going to support that
     """Returns input or new pre-processed config_path, if it input requests it.
     """
@@ -123,8 +124,8 @@ def check_need_to_preprocess_config(config_path):
         )
         return config_path
 
-    # TODO refactor so json case isn't left out from generator handling (or just
-    # drop json support, which might make more sense...)
+    # TODO TODO refactor so json case isn't left out from generator handling (or
+    # just drop json support, which might make more sense...)
     if config_path.endswith('.json'):
         warnings.warn('not checking for need to pre-process config, because not'
             ' currently support in the JSON input case'
@@ -136,6 +137,54 @@ def check_need_to_preprocess_config(config_path):
     if not config_path.endswith('.yaml'):
         return config_path
 
+    # TODO so that i don't need to worry about preventing these errors if the
+    # yaml has equivalent data, just always err if one of these things is set
+    # and the confnig tries to override it?
+
+    # TODO (probably simultaneously w/ fixing json support wrt config_path)
+    # refactor handling of this to also support json
+    hardware_dir_envvar = 'OLFACTOMETER_HARDWARE_DIR'
+    hardware_config_dir = os.environ.get(hardware_dir_envvar)
+
+    def find_hardware_config(h, err_prefix):
+        # We are just taking the chance that this might exist when really we
+        # wanted to refer to something under OLFACTOMETER_HARDWARE_DIR.
+        if isfile(h):
+            return h
+
+        _hardware_config_path = None
+        for f in glob.glob(join(hardware_config_dir, '*')):
+            n = split(f)[1]
+            if n == h:
+                _hardware_config_path = f
+                break
+
+            # ext includes the '.'
+            prefix, ext = splitext(n)
+            if prefix == h and len(ext) > 1:
+                _hardware_config_path = f
+                break
+
+        if _hardware_config_path is None:
+            raise IOError(err_prefix + ' is neither a fullpath to a file, nor '
+                f'a file / file prefix directly under {hardware_dir_envvar}='
+                f'{hardware_config_dir}'
+            )
+        return _hardware_config_path
+
+    hardware_config_path = None
+    if hardware_config is not None:
+        hardware_config_path = find_hardware_config(hardware_config,
+            f'hardware_config={hardware_config} was passed, but it'
+        )
+    else:
+        default_hardware_envvar = 'OLFACTOMETER_DEFAULT_HARDWARE'
+        default_hardware = os.environ.get(default_hardware_envvar)
+        if default_hardware is not None:
+            hardware_config_path = find_hardware_config(default_hardware,
+                f'{default_hardware_envvar}={default_hardware}'
+            )
+
     with open(config_path, 'r') as f:
         generator_yaml_dict = yaml.safe_load(f)
 
@@ -143,102 +192,129 @@ def check_need_to_preprocess_config(config_path):
     # it ever also would correspond to YAML/JSON with this 'generator' key at
     # the same level.
     if 'generator' not in generator_yaml_dict:
+        # Intentionally not erring in the case where the default is set, because
+        # that would be too annoying. Currently just silently doing nothing (in
+        # here) if no generator and if the only indication we should use the
+        # hardware config is the default specified in that env var.
+        if hardware_config is not None:
+            raise ValueError('hardware_config only valid if using a generator')
+
         return config_path
-    else:
-        generator = generator_yaml_dict['generator']
 
-        if generator == 'basic':
-            generator_fn = basic.make_config_dict
+    if hardware_config_path is not None:
+        with open(hardware_config_path, 'r') as f:
+            hardware_yaml_dict = yaml.safe_load(f)
 
-        elif generator == 'pair_concentration_grid':
-            generator_fn = pair_concentration_grid.make_config_dict
+        # assumes all hardware specific keys can be detected at the top level
+        # (so far the case, i believe, at least for expected inputs to
+        # preprocessors)
+        if any([k in common.hardware_specific_keys for k in generator_yaml_dict
+            ]):
+            # so that there is no ambiguity as to which should take precedence
+            raise ValueError('some of hardware_specific_keys='
+                f'{common.hardware_specific_keys} are defined in config_path. '
+                'this is invalid when hardware_config is specified.'
+            )
 
-        else:
-            raise NotImplementedError(f"generator '{generator}' not supported")
-
-        print(f"Using the '{generator}' generator configured with "
-            f"{config_path}"
+        print('Using olfactometer hardware definition at:',
+            hardware_config_path
         )
-        # Output will be either a dict or a list of dicts. In the latter case,
-        # each should be written to their own YAML file.
-        generated_config = generator_fn(generator_yaml_dict)
+        generator_yaml_dict.update(hardware_yaml_dict)
+        
+    generator = generator_yaml_dict['generator']
 
-        # TODO probably want to save the config + version of the code in the
-        # case when a generator isn't used regardless (or at least have the
-        # option to do so...) (not sure i do want this...)
-        # TODO might want to use a zipfile to include the extra generator
-        # information in that case. or just always a zipfile then for
-        # consistency?
+    if generator == 'basic':
+        generator_fn = basic.make_config_dict
 
-        # TODO TODO allow configuration of path these are saved at? at CLI, in
-        # yaml, env var, or where? default to `generated_stimulus_configs` or
-        # something, if not just zipping with other stuff, then maybe call it
-        # something else?
+    elif generator == 'pair_concentration_grid':
+        generator_fn = pair_concentration_grid.make_config_dict
 
-        # TODO probably want to save generator_yaml_dict (and generator too, if
-        # user defined...)? maybe as part of a zip file? or copy alongside w/
-        # diff suffix or something?
+    else:
+        raise NotImplementedError(f"generator '{generator}' not supported")
 
-        # TODO might want to refactor so this function can also just return the
-        # file contents it just wrote (to not need to re-read them), but then
-        # again, that's probably pretty trivial...
+    print(f"Using the '{generator}' generator configured with "
+        f"{config_path}"
+    )
+    # Output will be either a dict or a list of dicts. In the latter case,
+    # each should be written to their own YAML file.
+    generated_config = generator_fn(generator_yaml_dict)
 
-        # TODO should i be using safe_dump instead? (modify SafeDumper instead
-        # of Dumper if so)
-        # So that there are not aliases (references) within the generated YAML
-        # (they make it less readable).
-        # https://stackoverflow.com/questions/13518819
-        yaml.Dumper.ignore_aliases = lambda *args : True
+    # TODO probably want to save the config + version of the code in the
+    # case when a generator isn't used regardless (or at least have the
+    # option to do so...) (not sure i do want this...)
+    # TODO might want to use a zipfile to include the extra generator
+    # information in that case. or just always a zipfile then for
+    # consistency?
 
-        # TODO what is default_style kwarg to pyyaml dump? docs don't seem to
-        # say...
-        # TODO maybe i want to make a custom dumper that just uses this style
-        # for pin groups though? right now it's pretty ugly when everything is
-        # using this style...
-        # Setting this to True would make lists single-line by default, which I
-        # want for terminal stuff, but I don't like what this flow style does
-        # elsewhere.
-        default_flow_style = False
+    # TODO TODO allow configuration of path these are saved at? at CLI, in
+    # yaml, env var, or where? default to `generated_stimulus_configs` or
+    # something, if not just zipping with other stuff, then maybe call it
+    # something else?
 
-        # TODO maybe refactor two branches of this conditional to share a bit
-        # more code?
-        if type(generated_config) is dict:
-            yaml_dict = generated_config
+    # TODO probably want to save generator_yaml_dict (and generator too, if
+    # user defined...)? maybe as part of a zip file? or copy alongside w/
+    # diff suffix or something?
 
-            generated_yaml_fname = \
-                datetime.now().strftime('%Y%m%d_%H%M%S_stimuli.yaml')
+    # TODO might want to refactor so this function can also just return the
+    # file contents it just wrote (to not need to re-read them), but then
+    # again, that's probably pretty trivial...
 
-            print(f'Writing generated YAML to {generated_yaml_fname}')
+    # TODO should i be using safe_dump instead? (modify SafeDumper instead
+    # of Dumper if so)
+    # So that there are not aliases (references) within the generated YAML
+    # (they make it less readable).
+    # https://stackoverflow.com/questions/13518819
+    yaml.Dumper.ignore_aliases = lambda *args : True
+
+    # TODO what is default_style kwarg to pyyaml dump? docs don't seem to
+    # say...
+    # TODO maybe i want to make a custom dumper that just uses this style
+    # for pin groups though? right now it's pretty ugly when everything is
+    # using this style...
+    # Setting this to True would make lists single-line by default, which I
+    # want for terminal stuff, but I don't like what this flow style does
+    # elsewhere.
+    default_flow_style = False
+
+    # TODO maybe refactor two branches of this conditional to share a bit
+    # more code?
+    if type(generated_config) is dict:
+        yaml_dict = generated_config
+
+        generated_yaml_fname = \
+            datetime.now().strftime('%Y%m%d_%H%M%S_stimuli.yaml')
+
+        print(f'Writing generated YAML to {generated_yaml_fname}')
+        assert not exists(generated_yaml_fname)
+        with open(generated_yaml_fname, 'w') as f:
+            yaml.dump(yaml_dict, f, default_flow_style=default_flow_style)
+        print()
+
+        return generated_yaml_fname
+    else:
+        timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        generated_config_dir = timestamp_str + '_stimuli'
+        # TODO maybe also print each filename that is saved?
+        print(f'Writing generated YAML under ./{generated_config_dir}/')
+        assert not exists(generated_config_dir)
+        os.mkdir(generated_config_dir)
+
+        for i, yaml_dict in enumerate(generated_config):
+            assert type(yaml_dict) is dict
+            generated_yaml_fname = join(
+                generated_config_dir, f'{timestamp_str}_stimuli_{i}.yaml'
+            )
             assert not exists(generated_yaml_fname)
             with open(generated_yaml_fname, 'w') as f:
-                yaml.dump(yaml_dict, f, default_flow_style=default_flow_style)
-            print()
-
-            return generated_yaml_fname
-        else:
-            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-            generated_config_dir = timestamp_str + '_stimuli'
-            # TODO maybe also print each filename that is saved?
-            print(f'Writing generated YAML under ./{generated_config_dir}/')
-            assert not exists(generated_config_dir)
-            os.mkdir(generated_config_dir)
-
-            for i, yaml_dict in enumerate(generated_config):
-                assert type(yaml_dict) is dict
-                generated_yaml_fname = join(
-                    generated_config_dir, f'{timestamp_str}_stimuli_{i}.yaml'
+                yaml.dump(yaml_dict, f,
+                    default_flow_style=default_flow_style
                 )
-                assert not exists(generated_yaml_fname)
-                with open(generated_yaml_fname, 'w') as f:
-                    yaml.dump(yaml_dict, f,
-                        default_flow_style=default_flow_style
-                    )
-            del generated_yaml_fname
-            print()
+        del generated_yaml_fname
+        print()
 
-            # TODO test this case (as well as previous branch of this
-            # conditional)
-            return generated_config_dir
+        # TODO test this case (as well as previous branch of this
+        # conditional)
+        return generated_config_dir
 
 
 def _load_helper(filelike2dict_fn, filelike, message=None):
@@ -934,7 +1010,7 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
                     print(line)
 
 
-def main(config_path, **kwargs):
+def main(config_path, hardware_config=None, **kwargs):
     if in_docker and config_path is not None:
         # TODO reword to be inclusive of directory case?
         raise ValueError('passing filenames to docker currently not supported. '
@@ -952,7 +1028,9 @@ def main(config_path, **kwargs):
     # TODO add CLI flag to prevent this from saving anything (for testing)
     # (maybe have the flag also just print the YAML(s) the generator creates
     # then?)
-    config_path = check_need_to_preprocess_config(config_path)
+    config_path = check_need_to_preprocess_config(config_path,
+        hardware_config=hardware_config
+    )
 
     if not isdir(config_path):
         run(config_path, **kwargs)

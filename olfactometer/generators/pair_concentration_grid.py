@@ -110,6 +110,27 @@ def make_config_dict(generator_config_yaml_dict):
         group1_balance_pin = data['group1_balance_pin']
         group2_balance_pin = data['group2_balance_pin']
     else:
+        # TODO TODO don't do it this way. pick randomly from available pins.
+        '''
+        flow_division_pin_key = 'flow_division_pin'
+        if flow_division_pin_key not in data:
+            # The balances often being different types of valves (or even if the
+            # same type, being driven differently) probably reduces the chances
+            # of the single manifold design evenly dividing the flow.
+            raise ValueError(f'{flow_division_pin_key} (another solent vial) '
+                'must be set in single manifold case, to improve chances that'
+                ' flow divides evenly between the two open valves'
+            )
+        flow_division_pin = data[flow_division_pin_key]
+        '''
+
+        # TODO TODO fix
+        raise NotImplementedError('need to add another valve with solvent that'
+            ' opens when only one odor is presented, so each odor always gets '
+            'the same flow, assuming equal division between valves opened on '
+            ' the same manifold'
+        )
+
         if 'randomize_pairs_to_manifolds' in data:
             warnings.warn('randomize_pairs_to_manifolds specified in config, '
                 'but olfactometer only has one manifold. ignoring.'
@@ -278,19 +299,8 @@ def make_config_dict(generator_config_yaml_dict):
                 # case because the firmware specifically supports the case where
                 # there is a single balance pin, but it doesn't support two.
                 pins.extend([group1_balance_pin, group2_balance_pin])
-                # TODO TODO TODO check that these pseudo balance pins are
-                # working as an appropriate substitute in two manifold case!
 
             pinlist_at_each_trial.extend([pins] * n_trials)
-
-            # tried using this to improve YAML output format (to avoid
-            # references to the same thing), but it turned out id(...) being the
-            # same for consecutive entries wasn't what the only thing that
-            # caused that type of output (in this list the id(...) of all
-            # elements (sublists) are unique, unlike in the version built w/
-            # .extend, where consecutive trials have the same id).
-            #for _ in range(n_trials):
-            #    pinlist_at_each_trial.append([pins])
 
             # Again, just used for troubleshooting / display in here. pins above
             # all that matter for outputs.

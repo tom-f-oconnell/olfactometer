@@ -50,6 +50,19 @@ def parse_pulse_timing_s_to_us(data, generated_config_dict=None):
     return generated_config_dict
 
 
+single_manifold_specific_keys = ['balance_pin', 'available_valve_pins']
+two_manifold_specific_keys = ['group1_balance_pin', 'group2_balance_pin',
+    'available_group1_valve_pins', 'available_group2_valve_pins'
+]
+_top = 'timing_output_pin'
+_rec = 'recording_indicator_pin'
+
+# These keys should all be top-level in config that is intended to be
+# preprocessed.
+hardware_specific_keys = (
+    single_manifold_specific_keys + two_manifold_specific_keys + [_top, _rec]
+)
+
 def parse_common_settings(data, generated_config_dict=None):
     """
     Takes config dict, and adds populated values for the 'timing',
@@ -69,10 +82,8 @@ def parse_common_settings(data, generated_config_dict=None):
     # config though... (balance_pin as well perhaps)
 
     # The firmware should treat 0 as disabling a pin set as such.
-    top = 'timing_output_pin'
-    settings_dict[top] = data[top] if top in data else 0
-    rec = 'recording_indicator_pin'
-    settings_dict[rec] = data[rec] if rec in data else 0
+    settings_dict[_top] = data[_top] if _top in data else 0
+    settings_dict[_rec] = data[_rec] if _rec in data else 0
 
     # TODO maybe also handle balance_pin here, though might make it more messy
     # since the determination of whether to use the single / double manifold
@@ -114,10 +125,6 @@ def get_available_pins(data, generated_config_dict=None):
     If `generated_config_dict` is passed, the 'settings'->'balance_pin' key will
     be filled in appropriately.
     """
-    single_manifold_specific_keys = ['balance_pin', 'available_valve_pins']
-    two_manifold_specific_keys = ['group1_balance_pin', 'group2_balance_pin',
-        'available_group1_valve_pins', 'available_group2_valve_pins'
-    ]
     have_single_manifold_keys = [
         k in data for k in single_manifold_specific_keys
     ]
