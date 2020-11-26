@@ -315,6 +315,7 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
     extra_flag_list = []
 
     vstr = version_str()
+    print(f'Version string being compiled into firmware: {vstr}')
 
     extra_flag_list.append(f'-DOLFACTOMETER_VERSION_STR={vstr}')
 
