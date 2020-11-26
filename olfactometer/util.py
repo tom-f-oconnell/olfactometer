@@ -833,6 +833,8 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         if (not allow_version_mismatch and
             py_version_str == upload.no_clean_hash_str):
 
+            # TODO try to move this error to before upload would happen
+            # (if upload is requested)
             raise ValueError('can not run with uncommitted changes without '
                 'allow_version_mismatch (-a), which is only for debugging. '
                 'please commit and re-upload.'
@@ -889,23 +891,21 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
                     're-run with -u if not.'
                 )
 
-            if _first_run:
-                if not allow_version_mismatch:
-                        if arduino_version_str == upload.no_clean_hash_str:
-                            raise ValueError('arduino code came from dirty git'
-                                ' state. please commit and re-upload.'
-                            )
+        if _first_run:
+            if not allow_version_mismatch:
+                    if arduino_version_str == upload.no_clean_hash_str:
+                        raise ValueError('arduino code came from dirty git'
+                            ' state. please commit and re-upload.'
+                        )
+                    if py_version_str != arduino_version_str:
+                        raise ValueError('version mismatch (Python: '
+                            f'{py_version_str}, Arduino: {arduino_version_str}'
+                            ')! please re-upload (add the -u flag)!'
+                        )
 
-                        if py_version_str != arduino_version_str:
-                            raise ValueError('version mismatch (Python: '
-                                f'{py_version_str}, Arduino: '
-                                f'{arduino_version_str})! please re-upload (add'
-                                ' the -u flag)!'
-                            )
-
-                elif verbose:
-                    print('Python version:', py_version_str)
-                    print('Arduino version:', arduino_version_str)
+            elif verbose:
+                print('Python version:', py_version_str)
+                print('Arduino version:', arduino_version_str)
 
         write_message(ser, settings, ignore_ack=ignore_ack, verbose=verbose)
 
