@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 Takes YAML input describing a panels of odors and returns config to present
 them, either in the order in the YAML or randomly. Odors are assigned to random
@@ -46,6 +44,10 @@ post_pulse_s: 11
 # example...
 
 import random
+from copy import deepcopy
+import warnings
+
+from olfactometer.generators import common
 
 
 # TODO may end up wanting to add support for changing the concentration range
@@ -57,14 +59,8 @@ import random
 # written, and each has a number in their name), so printing out sorted by name
 # lists them in order
 
-# TODO print which YAML file is being used, when reading through a sequence?
-# TODO and maybe also print how many trials / time for that file?
-
-# TODO TODO maybe generalize how valve groups are implemented to just putting
-# available_valve_pins / balance_pin under a YAML / JSON iterable, with perhaps
-# an optional `name` key to give something to print when telling the user what
-# to connect to what (include in functions shared by all generators though,
-# probably)
+# TODO and maybe also print how many trials / time for that file? (move this
+# todo to write_sequence or something)
 
 def make_config_dict(generator_config_yaml_dict):
     """
@@ -83,15 +79,7 @@ def make_config_dict(generator_config_yaml_dict):
     """
     data = generator_config_yaml_dict
 
-    # Leaving the validation (bounds checking) to the `olfactometer` script
-    pre_pulse_s = float(data['pre_pulse_s'])
-    pulse_s = float(data['pulse_s'])
-    post_pulse_s = float(data['post_pulse_s'])
-
-    us_per_s = 1e6
-    pre_pulse_us = int(round(pre_pulse_s * us_per_s))
-    pulse_us = int(round(pulse_s * us_per_s))
-    post_pulse_us = int(round(post_pulse_s * us_per_s))
+    common_generated_config_dict = common.parse_common_settings(data)
 
     global_log10_concentrations = data['global_log10_concentrations']
     n_concentrations = len(global_log10_concentrations)
@@ -103,54 +91,39 @@ def make_config_dict(generator_config_yaml_dict):
 
     # TODO maybe also support including multiple pairs in one recording,
     # if we have enough available pins (on each manifold)
-    single_manifold_specific_keys = ['balance_pin', 'available_valve_pins']
 
-    two_manifold_specific_keys = ['group1_balance_pin', 'group2_balance_pin',
-        'available_group1_valve_pins', 'available_group2_valve_pins',
-        'randomize_pairs_to_manifolds'
-    ]
+    available_valve_pins, pins2balances, single_manifold = \
+        common.get_available_pins(data, common_generated_config_dict)
 
-    have_single_manifold_keys = [
-        k in data for k in single_manifold_specific_keys
-    ]
-    have_two_manifold_keys = [
-        k in data for k in two_manifold_specific_keys
-    ]
-    # TODO TODO probably print some stuff to make which manifold setup we are
-    # expecting more clear
-    if any(have_single_manifold_keys):
-        assert all(have_single_manifold_keys)
-        assert not any(have_two_manifold_keys)
-
-        available_valve_pins = data['available_valve_pins']
-        assert type(available_valve_pins) is list
-
-        single_manifold = True
-    else:
-        assert all(have_two_manifold_keys)
-
-        available_group1_valve_pins = data['available_group1_valve_pins']
-        assert type(available_group1_valve_pins) is list
-        available_group2_valve_pins = data['available_group2_valve_pins']
-        assert type(available_group2_valve_pins) is list
-
-        group1_balance_pin = data['group1_balance_pin']
-        group2_balance_pin = data['group2_balance_pin']
-
+    if not single_manifold:
         randomize_pairs_to_manifolds = data['randomize_pairs_to_manifolds']
 
-        single_manifold = False
+        # don't want to worry about cases with more manifolds for now
+        assert len(set(pins2balances.values())) == 2
 
-    # TODO TODO check that pins don't overlap across the two manifolds
-    # (including balance_pins)
+        # TODO could maybe refactor stuff below to operate directly on outputs
+        # and depend less on single_manifold to branch...
+        # now i'm just re-extracting these from the config data, just as
+        # get_available_pins is doing
+        available_group1_valve_pins = data['available_group1_valve_pins']
+        available_group2_valve_pins = data['available_group2_valve_pins']
+        group1_balance_pin = data['group1_balance_pin']
+        group2_balance_pin = data['group2_balance_pin']
+    else:
+        if 'randomize_pairs_to_manifolds' in data:
+            warnings.warn('randomize_pairs_to_manifolds specified in config, '
+                'but olfactometer only has one manifold. ignoring.'
+            )
 
     randomize_pair_order = data['randomize_pair_order']
     if randomize_pair_order:
         random.shuffle(odor_pairs)
 
     # TODO refactor so loop body is just a function call?
-    generated_yaml_dicts = []
+    generated_config_dicts = []
     for pair in odor_pairs:
+        generated_config_dict = deepcopy(common_generated_config_dict)
+
         odor1_name, odor2_name = pair['pair']
         assert type(odor1_name) is str
         assert type(odor2_name) is str
@@ -182,9 +155,6 @@ def make_config_dict(generator_config_yaml_dict):
             manifold_odors = [odor1_name, odor2_name]
             if randomize_pairs_to_manifolds:
                 random.shuffle(manifold_odors)
-
-            # TODO TODO check no overlap between available pins in the two
-            # groups ("balances" too)
 
             odor_vials = []
             odor_pins = []
@@ -331,42 +301,16 @@ def make_config_dict(generator_config_yaml_dict):
         assert len(pinlist_at_each_trial) == expected_total_n_trials
         del expected_total_n_trials
 
-        if single_manifold:
-            balance_pin = data['balance_pin']
-        else:
-            # TODO check that it's actually disabled in this case
-            balance_pin = 0
+        generated_config_dict['pins2odors'] = pins2odors
+        common.add_pinlist(pinlist_at_each_trial, generated_config_dict)
 
-        timing_output_pin = \
-            data['timing_output_pin'] if 'timing_output_pin' in data else 0
-
-        recording_indicator_pin = (data['recording_indicator_pin']
-            if 'recording_indicator_pin' in data else 0
-        )
-
-        generated_yaml_dict = {
-            'settings': {
-                'timing': {
-                    'pre_pulse_us': pre_pulse_us,
-                    'pulse_us': pulse_us,
-                    'post_pulse_us': post_pulse_us
-                },
-                'balance_pin': balance_pin,
-                'timing_output_pin': timing_output_pin,
-                'recording_indicator_pin': recording_indicator_pin,
-            },
-            'pin_sequence': {
-                'pin_groups': [{'pins': pins} for pins in pinlist_at_each_trial]
-            },
-            'pins2odors': pins2odors
-        }
-        generated_yaml_dicts.append(generated_yaml_dict)
+        generated_config_dicts.append(generated_config_dict)
 
     # TODO check log10_conc: None (-> 'null' in YAML) gets parsed correctly back
     # to None during a round trip
 
     # TODO want to squeeze output if list is only length 1?
-    return generated_yaml_dicts
+    return generated_config_dicts
 
 
 # TODO delete / change to something that takes arbitrary input for testing /
@@ -381,16 +325,16 @@ if __name__ == '__main__':
     with open(generator_config_yaml_fname, 'r') as f:
         yaml_dict = yaml.safe_load(f)
 
-    generated_yaml_dict = make_config_dict(yaml_dict)
+    generated_config_dict = make_config_dict(yaml_dict)
 
     from pprint import pprint
-    pprint(generated_yaml_dict)
+    pprint(generated_config_dict)
 
-    if type(generated_yaml_dict) is dict:
+    if type(generated_config_dict) is dict:
         print('\n' + '#' * 80)
-        print(yaml.dump(generated_yaml_dict))
+        print(yaml.dump(generated_config_dict))
     else:
-        for yaml_dict in generated_yaml_dict:
+        for yaml_dict in generated_config_dict:
             assert type(yaml_dict) is dict
             print('\n' + '#' * 80)
             print(yaml.dump(yaml_dict))

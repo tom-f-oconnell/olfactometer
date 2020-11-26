@@ -1,4 +1,3 @@
-
 """
 Takes YAML input describing a panels of odors and returns config to present
 them, either in the order in the YAML or randomly. Odors are assigned to random
@@ -39,6 +38,8 @@ post_pulse_s: 11
 
 import random
 
+from olfactometer.generators import common
+
 # (implement either something like this, used in place of yaml loading here, or
 # some OOP thing, when i extend support to a second+ generator)
 #from olfactometer import parse_common_generator_config
@@ -62,21 +63,10 @@ def make_config_dict(generator_config_yaml_dict):
     """
     data = generator_config_yaml_dict
 
-    # Leaving the validation (bounds checking) to the `olfactometer` script
-    pre_pulse_s = float(data['pre_pulse_s'])
-    pulse_s = float(data['pulse_s'])
-    post_pulse_s = float(data['post_pulse_s'])
+    generated_config_dict = common.parse_common_settings(data)
 
-    us_per_s = 1e6
-    pre_pulse_us = int(round(pre_pulse_s * us_per_s))
-    pulse_us = int(round(pulse_s * us_per_s))
-    post_pulse_us = int(round(post_pulse_s * us_per_s))
-
-    # Probably only if I expect this parsed list as separate input (which is
-    # derived from rig / olfactometer specific config upstream) would it make
-    # sense to validate this (and then it should also be done upstream).
-    available_valve_pins = data['available_valve_pins']
-    assert type(available_valve_pins) is list
+    available_valve_pins, pins2balances, single_manifold = \
+        common.get_available_pins(data, generated_config_dict)
 
     odors = data['odors']
     # TODO factor out this validation
@@ -113,50 +103,21 @@ def make_config_dict(generator_config_yaml_dict):
         random.shuffle(trial_pins)
 
     # No mixtures supported in this config generation function
-    pinlist_at_each_trial = [[p] for p in trial_pins]
+    if single_manifold:
+        pinlist_at_each_trial = [[p] for p in trial_pins]
+    else:
+        # Since the global balance is disable in the !single_manifold case, we
+        # need to explicitly tell the correct balance pin to trigger alongside
+        # each odor pin.
+        pinlist_at_each_trial = [[p, pins2balances[p]] for p in trial_pins]
 
-    # TODO maybe require these are in config (explicitly set to 0 to disable if
-    # you don't want to use them?) maybe 0 isn't that clear in this higher level
-    # config though...
-    # TODO depending on how the downstream stuff is working, this defaulting to
-    # 0 could very well be redundant anyway... i suspect that might already be
-    # how it behaves, even though the display is kinda weird then
-    balance_pin = data['balance_pin'] if 'balance_pin' in data else 0
-    timing_output_pin = \
-        data['timing_output_pin'] if 'timing_output_pin' in data else 0
-
-    recording_indicator_pin = (data['recording_indicator_pin'] if
-        'recording_indicator_pin' in data else 0
-    )
-
-    generated_yaml_dict = {
-        'settings': {
-            'timing': {
-                'pre_pulse_us': pre_pulse_us,
-                'pulse_us': pulse_us,
-                'post_pulse_us': post_pulse_us
-            },
-            'balance_pin': balance_pin,
-            'timing_output_pin': timing_output_pin,
-            'recording_indicator_pin': recording_indicator_pin,
-        },
-        # TODO make a util function to generate this from list of lists of
-        # integers?
-        'pin_sequence': {
-            'pin_groups': [{'pins': pins} for pins in pinlist_at_each_trial]
-        },
-        'pins2odors': pins2odors
-    }
-
-    # TODO maybe have `olfactometer` validate that all generator outputs have a
-    # `pins2odors` / `odors2pins` variable with the pins all used (and not
-    # balance_pin or one of the other reserved pins) in the pin sequence and all
-    # odors at least not null or something (maybe str?)
+    generated_config_dict['pins2odors'] = pins2odors
+    common.add_pinlist(pinlist_at_each_trial, generated_config_dict)
 
     # TODO functions to allow running generators standalone (to produce output
     # either printed or at a path specified at input, for inspection)?
 
-    return generated_yaml_dict
+    return generated_config_dict
 
 
 # TODO maybe some other way of implementing generators (OOP?) would make it
