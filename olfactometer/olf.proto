@@ -53,6 +53,8 @@ message Settings {
     // equivalent of ITI in Remy's arduino script, for periods where this is
     // also low betweeen blocks / trials
     uint32 recording_indicator_pin = 6;
+    // TODO TODO TODO also implement a mirror pin (though for now, just going to
+    // always have the flipper mirror allowing light through)
 }
 
 // Not intending to use this outside of PinSequence, but the syntax seems

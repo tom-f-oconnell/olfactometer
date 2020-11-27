@@ -79,6 +79,8 @@ def make_config_dict(generator_config_yaml_dict):
     """
     data = generator_config_yaml_dict
 
+    # TODO think about docs and maybe changes to interfaces to make more of this
+    # stuff for-free if people were to implement their own generators
     common_generated_config_dict = common.parse_common_settings(data)
 
     global_log10_concentrations = data['global_log10_concentrations']
@@ -92,6 +94,9 @@ def make_config_dict(generator_config_yaml_dict):
     # TODO maybe also support including multiple pairs in one recording,
     # if we have enough available pins (on each manifold)
 
+    # TODO TODO better error message if config seems to be expecting separate
+    # hardware config, but it's not set up correctly (and thus one of the
+    # asserts about having some of the required keys fails in here)
     available_valve_pins, pins2balances, single_manifold = \
         common.get_available_pins(data, common_generated_config_dict)
 
@@ -110,27 +115,6 @@ def make_config_dict(generator_config_yaml_dict):
         group1_balance_pin = data['group1_balance_pin']
         group2_balance_pin = data['group2_balance_pin']
     else:
-        # TODO TODO don't do it this way. pick randomly from available pins.
-        '''
-        flow_division_pin_key = 'flow_division_pin'
-        if flow_division_pin_key not in data:
-            # The balances often being different types of valves (or even if the
-            # same type, being driven differently) probably reduces the chances
-            # of the single manifold design evenly dividing the flow.
-            raise ValueError(f'{flow_division_pin_key} (another solent vial) '
-                'must be set in single manifold case, to improve chances that'
-                ' flow divides evenly between the two open valves'
-            )
-        flow_division_pin = data[flow_division_pin_key]
-        '''
-
-        # TODO TODO fix
-        raise NotImplementedError('need to add another valve with solvent that'
-            ' opens when only one odor is presented, so each odor always gets '
-            'the same flow, assuming equal division between valves opened on '
-            ' the same manifold'
-        )
-
         if 'randomize_pairs_to_manifolds' in data:
             warnings.warn('randomize_pairs_to_manifolds specified in config, '
                 'but olfactometer only has one manifold. ignoring.'
@@ -150,7 +134,20 @@ def make_config_dict(generator_config_yaml_dict):
         assert type(odor2_name) is str
 
         if single_manifold:
+            # This solvent is not the usual balance (though there is that too).
+            # When delivering only a single component, the valve for this also
+            # opens, to try to have the flow divide evenly, so that the total
+            # flow for the component remains the same as when it's presented
+            # with other odors.
+            # Doing it this way, with just one additional solvent vial, assumes
+            # all solvents are the same (assuming we care about this
+            # background).
+            # NOTE: as long as there is are trial[s] included that present just
+            # this solvent by itself, the lengths of the pin lists in the
+            # pin_sequence will be uneven, and that warning will get triggered
+            # at run time, but it can be ignored
             odor_vials = [{'name': 'solvent'}]
+
             for n in (odor1_name, odor2_name):
                 odor_vials.extend([{'name': n, 'log10_conc': c}
                     for c in global_log10_concentrations

@@ -34,7 +34,8 @@ if __name__ == '__main__':
         '"git status" to fix mismatch without this flag.'
     )
     parser.add_argument('-t', '--try-parse', action='store_true', default=False,
-        help='exit after attempting to parse config'
+        help='exit after attempting to parse config. no need for a connected '
+        'Arduino.'
     )
     parser.add_argument('-i', '--ignore-ack', action='store_true',
         default=False, help='ignores acknowledgement message #s arduino sends. '

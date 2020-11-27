@@ -141,6 +141,11 @@ def check_need_to_preprocess_config(config_path, hardware_config=None):
     # yaml has equivalent data, just always err if one of these things is set
     # and the confnig tries to override it?
 
+    # TODO TODO add command line arg to list hardware and exit or separate
+    # script to do so (maybe also printing out env var values (if set) and data
+    # in each of the hardware config files)
+    # (maybe [also] list all this stuff if hardware specified is invalid?)
+
     # TODO (probably simultaneously w/ fixing json support wrt config_path)
     # refactor handling of this to also support json
     hardware_dir_envvar = 'OLFACTOMETER_HARDWARE_DIR'
@@ -793,6 +798,8 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 
 
 # TODO TODO also support mixtures (separate fn probably)
+# TODO support 'solvent' key for odor? and maybe 'default_solvent' toplevel key
+# (kwarg here?)?
 def format_odor(odor_dict):
     odor_str = odor_dict['name']
     if 'log10_conc' in odor_dict:
@@ -810,7 +817,12 @@ def format_odor(odor_dict):
 
 def print_odor(odor_dict):
     print(format_odor(odor_dict))
-    
+
+
+# TODO add fn that takes a pin_sequence (or pinlist_at_each_trial equivalent),
+# and pins2odors, and prints it all nicely
+
+
 
 # TODO TODO maybe add a block=True flag to allow (w/ =False) to return, to not
 # need to start this function in a new thread or process when trying to run the
