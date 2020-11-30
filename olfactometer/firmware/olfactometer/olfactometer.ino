@@ -415,6 +415,40 @@ void setup() {
     digitalWrite(13, LOW);
     */
 
+    // hack to try to prevent the flipper mirror (currently on pin 33) from
+    // switching (if left in mode where it can be controlled by this pin...)
+    // TODO TODO TODO why didn't this even work? are my electronics screwed up
+    // somewhere? something else unexpectedly using pin 33? small changes in
+    // voltage to do non-ideal electronics and low flipper mirror digital
+    // thresholds? maybe the fact that remy's (unpowered) arduino is also
+    // connected in parallel has something to do with it? bootloader?
+    // maybe oscilloscope this...
+    // TODO delete. try to set all pins to OUTPUT, LOW (how to find all
+    // available pins though? or can i rely on no-op for pinMode w/ invalid
+    // pins?). or just leave floating till i use this pin...
+    //pinMode(33, OUTPUT);
+    //digitalWrite(33, LOW);
+    //
+
+    // TODO find some way to write all digital pins this has access to low
+    // (on the particular hardware uploaded to)
+    // hack to fix issue of recording starting immediately (b/c thorsync reads
+    // recording_indicator_pin as ~1-2v, and that triggers it). these should be
+    // recording_indicator_pin and timing_output_pin, with the settings i'm
+    // currently using.
+    pinMode(20, OUTPUT);
+    pinMode(21, OUTPUT);
+    pinMode(30, OUTPUT);
+    pinMode(33, OUTPUT);
+    pinMode(35, OUTPUT);
+    pinMode(37, OUTPUT);
+    digitalWrite(20, LOW);
+    digitalWrite(21, LOW);
+    digitalWrite(30, LOW);
+    digitalWrite(33, LOW);
+    digitalWrite(35, LOW);
+    digitalWrite(37, LOW);
+
     // Other candidate rates: 38400, 57600, 115200 (max)
     Serial.begin(115200);
     Serial.println(version_str);
@@ -507,32 +541,6 @@ void setup() {
             #endif
         }
     }
-
-    // hack to try to prevent the flipper mirror (currently on pin 33) from
-    // switching (if left in mode where it can be controlled by this pin...)
-    // TODO TODO TODO why didn't this even work? are my electronics screwed up
-    // somewhere? something else unexpectedly using pin 33? small changes in
-    // voltage to do non-ideal electronics and low flipper mirror digital
-    // thresholds? maybe the fact that remy's (unpowered) arduino is also
-    // connected in parallel has something to do with it? bootloader?
-    // maybe oscilloscope this...
-    // TODO delete. try to set all pins to OUTPUT, LOW (how to find all
-    // available pins though? or can i rely on no-op for pinMode w/ invalid
-    // pins?). or just leave floating till i use this pin...
-    //pinMode(33, OUTPUT);
-    //digitalWrite(33, LOW); 
-    //
-
-    // TODO find some way to write all digital pins this has access to low
-    // (on the particular hardware uploaded to)
-    // hack to fix issue of recording starting immediately (b/c thorsync reads
-    // recording_indicator_pin as ~1-2v, and that triggers it). these should be
-    // recording_indicator_pin and timing_output_pin, with the settings i'm
-    // currently using.
-    pinMode(20, OUTPUT);
-    digitalWrite(20, LOW);
-    pinMode(21, OUTPUT);
-    digitalWrite(21, LOW);
 
     #ifdef DEBUG_PRINTS
     Serial.println("unique output pins:");
