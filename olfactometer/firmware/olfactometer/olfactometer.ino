@@ -523,6 +523,17 @@ void setup() {
     //digitalWrite(33, LOW); 
     //
 
+    // TODO find some way to write all digital pins this has access to low
+    // (on the particular hardware uploaded to)
+    // hack to fix issue of recording starting immediately (b/c thorsync reads
+    // recording_indicator_pin as ~1-2v, and that triggers it). these should be
+    // recording_indicator_pin and timing_output_pin, with the settings i'm
+    // currently using.
+    pinMode(20, OUTPUT);
+    digitalWrite(20, LOW);
+    pinMode(21, OUTPUT);
+    digitalWrite(21, LOW);
+
     #ifdef DEBUG_PRINTS
     Serial.println("unique output pins:");
     #endif
