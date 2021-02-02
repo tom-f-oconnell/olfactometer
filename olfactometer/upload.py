@@ -72,11 +72,27 @@ def make_arduino_sketch_and_libraries(sketch_dir, arduino_lib_dir,
     sketch_dir = abspath(sketch_dir)
     arduino_lib_dir = abspath(arduino_lib_dir)
 
+    if os.name == 'nt':
+        warnings.warn('copying rather than symlinking in sketch + library '
+            'creation, because easier on Windows'
+        )
+        use_symlinks = False
+
     def copy_or_link(src, dst):
         if use_symlinks:
             os.symlink(src, dst)
         else:
             shutil.copyfile(src, dst)
+
+    # TODO TODO test that in the windows case (where we will be using copying
+    # rather than symlinks to avoid having to use elevated permissions / change
+    # permissions), the `if not exist(dst)` checks don't lead to these generated
+    # files not being updated in some cases where they should!
+    # (maybe just always overwrite?)
+    # for reference about the windows permission issues, see:
+    # https://www.scivision.dev/windows-symbolic-link-permission-enable/
+    # https://stackoverflow.com/questions/32877260
+    # https://stackoverflow.com/questions/6260149
 
     ###########################################################################
     # Create the sketch directory
@@ -204,6 +220,7 @@ def is_repo_current(repo, warn=True):
 
 
 no_clean_hash_str = 'no_clean_git_version'
+no_version_available_str = 'no_version_available'
 # TODO might make more sense to move to util
 def version_str(update_check=False, update_on_prompt=False):
     """Returns either git hash of this repo or a str indicating none was usable.
@@ -216,8 +233,25 @@ def version_str(update_check=False, update_on_prompt=False):
         # that complains about lack of git executable (which we don't need in
         # Docker case anyway)
         import git
+        # TODO test this import path also works on my ubuntu installations
+        from git.exc import InvalidGitRepositoryError
 
-        repo = git.Repo(this_package_dir, search_parent_directories=True)
+        # TODO TODO fix so this branch can work in case where script is
+        # installed via pip (not editable), and in particular on windows.
+        # not sure how i didn't seem to have the same issue on ubuntu, even
+        # though "olf" should still have been under some site-packages directory
+        # or something like that there too...
+        # git.exc.InvalidGitRepositoryError: C:\Users\tom\AppData\Local\
+        # Packages\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\
+        # LocalCache\local-packages\Python38\site-packages\olfactometer
+        try:
+            repo = git.Repo(this_package_dir, search_parent_directories=True)
+        except InvalidGitRepositoryError:
+            # TODO maybe use pip x.y.z version in this case?
+            # or have a file w/ version that gets bumped somehow / generated at
+            # build time, maybe in a step before pip based setup.py invocation?
+            warnings.warn('version_str could not find a version')
+            return no_version_available_str
 
         # TODO check! this was hack to fix update_check undefined error. seems
         # ok tho.

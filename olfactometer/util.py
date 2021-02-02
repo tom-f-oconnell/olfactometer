@@ -12,6 +12,7 @@ import tempfile
 from datetime import datetime
 import glob
 import json
+import argparse
 
 import serial
 from google.protobuf.internal.encoder import _VarintBytes
@@ -52,6 +53,9 @@ if not in_docker:
     # used from within source tree? (would probably have to be a way to include
     # build in setup.py... and not sure there is)
     # TODO only do this if proto_file has changed since the python outputs have
+    # TODO TODO wait, why doesn't this need to use the nanopdb_generator, or
+    # otherwise reference that? doesn't it need to be symmetric w/ firmware
+    # definitions generated via nanopb?
     proto_file = join(this_package_dir, 'olf.proto')
     proto_path, _ = split(proto_file)
     p = subprocess.Popen(['protoc', f'--python_out={this_package_dir}',
@@ -542,19 +546,35 @@ _name2validate_fn = {
     'PinSequence': validate_pin_sequence,
     'PinGroup': validate_pin_group
 }
+# TODO try to find a means of referencing these types that works in both the
+# ubuntu / windows deployments. maybe the second syntax would work in both
+# cases? test on ubuntu.
+try:
+    # What I had been using in the previously tested Ubuntu deployed versions.
+    msg = pyext._message
+    repeated_composite_container = msg.RepeatedCompositeContainer
+    repeated_scalar_container = msg.RepeatedScalarContainer
+
+# AttributeError: module 'google.protobuf.pyext' has no attribute '_message'
+except AttributeError:
+    from google.protobuf.internal import containers
+    repeated_composite_container = containers.RepeatedCompositeFieldContainer
+    repeated_scalar_container = containers.RepeatedScalarFieldContainer
+
 def validate(msg, warn=True, _first_call=True):
     """Raises ValueError if msg validation fails.
     """
-    if isinstance(msg, pyext._message.RepeatedCompositeContainer):
+    if isinstance(msg, repeated_composite_container):
         for value in msg:
             validate(value, warn=warn, _first_call=False)
         return
-    elif isinstance(msg, pyext._message.RepeatedScalarContainer):
+    elif isinstance(msg, repeated_scalar_container):
         # Only iterating over and validating these elements to try to catch any
         # base-case types that I wasn't accounting for.
         for value in msg:
             validate(value, warn=warn, _first_call=False)
         return
+
     try:
         # TODO either IsInitialized or FindInitializationErrors useful?
         # latter only useful if former is False or what? see docs
@@ -992,6 +1012,9 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
                         )
 
             elif verbose:
+                # TODO make sure this doesn't cause windows case to fail
+                # (because these are not defined) if verbose=True. might need to
+                # move things around a bit.
                 print('Python version:', py_version_str)
                 print('Arduino version:', arduino_version_str)
 
@@ -1085,3 +1108,73 @@ def main(config_path, hardware_config=None, **kwargs):
             if first_run:
                 first_run = False
 
+
+def main_cli():
+    # TODO try to refactor to inherit / share (at least some?) command line
+    # arguments with upload.py ?
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-u', '--upload', action='store_true', default=False,
+        help='also uploads Arduino code before running'
+    )
+    # TODO just detect? or still have this as an option? maybe have on default,
+    # and detect by default? (might not be very easy to detect with docker,
+    # at least not without using privileged mode as opposed to just passing one
+    # specific port... https://stackoverflow.com/questions/24225647 )
+    # maybe just use privileged though?
+    parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
+        help='port the Arduino is connected to. '
+        'For uploading and communication.'
+    )
+    parser.add_argument('-f', '--fqbn', action='store', default=None,
+        help='Fully Qualified Board Name, e.g.: arduino:avr:uno. corresponds to'
+        ' arduino-cli -b/--fqbn. mainly for testing compilation with other '
+        'boards. your connected board should be detected without needing to '
+        'pass this.'
+    )
+    parser.add_argument('-a', '--allow-version-mismatch', action='store_true',
+        default=False, help='unless passed, git hash of arduino code will be '
+        'checked against git hash of python code, and it will not let you '
+        'proceed unless they match. re-upload arduino code with clean '
+        '"git status" to fix mismatch without this flag.'
+    )
+    parser.add_argument('-t', '--try-parse', action='store_true', default=False,
+        help='exit after attempting to parse config. no need for a connected '
+        'Arduino.'
+    )
+    parser.add_argument('-i', '--ignore-ack', action='store_true',
+        default=False, help='ignores acknowledgement message #s arduino sends. '
+        'makes viewing all debug prints easier, as no worry they will interfere'
+        ' with receipt of message number.'
+    )
+    # TODO document OLFACTOMETER_DEFAULT_HARDWARE, and interactions with the
+    # same keys already present in some YAML
+    # TODO maybe use defs of these env vars from util rather than retyping here
+    parser.add_argument('-r', '--hardware', action='store', default=None,
+        help='[path to / prefix of] config specifying available valve pins and'
+        'other important pins for a particular physical olfactometer. config '
+        'must be under OLFACTOMETER_HARDWARE_DIR to refer by prefix. see also '
+        'OLFACTOMETER_DEFAULT_HARDWARE.'
+    )
+    parser.add_argument('-v', '--verbose', action='store_true', default=False)
+    parser.add_argument('config_path', type=str, nargs='?', default=None,
+        help='.json/.yaml file containing all required data. see `load` '
+        'function. reads config from stdin if not passed.'
+    )
+    args = parser.parse_args()
+
+    do_upload = args.upload
+    port = args.port
+    fqbn = args.fqbn
+    allow_version_mismatch = args.allow_version_mismatch
+    try_parse = args.try_parse
+    ignore_ack = args.ignore_ack
+    hardware_config = args.hardware
+    verbose = args.verbose
+    config_path = args.config_path
+
+    main(config_path, port=port, fqbn=fqbn, do_upload=do_upload,
+        allow_version_mismatch=allow_version_mismatch,
+        ignore_ack=ignore_ack, try_parse=try_parse,
+        hardware_config=hardware_config, verbose=verbose
+    )
+    

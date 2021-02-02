@@ -20,9 +20,8 @@ The Docker method will unfortunately not work for typical Windows
 configurations, and there does not seem to be a workaround. See 
 [this issue](https://github.com/docker/for-win/issues/1018) for more details.
 
-It should still be possible to follow the `Development installation`
-instructions to get this working on Windows, but you will need to figure out how
-to install `protoc` and `arduino-cli` yourself.
+See the Windows specific installation instructions under the
+`Development installation` section below.
 
 
 ### Running
@@ -104,6 +103,10 @@ for you for some reason. You must verify that things are working as you intend.
    are required on Windows here)
 - A recent version of `pip` (`20.2.2` definitely works, `9.0.1` does not)
 
+
+#### Windows 
+
+
 #### Installation
 ```
 git clone https://github.com/tom-f-oconnell/olfactometer
@@ -115,7 +118,6 @@ dependencies with this command. This will probably not work on other systems.
 ```
 ./scripts/install_18.04_deps.sh
 ```
-
 If you are not using 18.04, and thus could not use the script above, also run
 this command from within your local clone of this git repository:
 ```
@@ -129,6 +131,34 @@ After you have installed the necessary dependencies:
 # (make and activate a virtual environment here, if you would like)
 pip install .
 ```
+
+If you are on Windows, after making sure that `python>=3.6` and `git` are
+installed:
+1. Download `arduino-cli.zip` from their website
+2. Extract and copy to `C:\Program Files\arduino-cli`, so that inside this new
+   folder there is the `arduino-cli.exe` from the ZIP file.
+3. Add `C:Program Files\arduino-cli` to your `Path` environment variable, by
+   pressing the Windows key, searching for "environment variable", clicking the
+   result (works in Windows 10 at least), and then clicking the `Environment
+   Variables...` button at the bottom of the window that pops up. In the
+   "User variables for <your-username>" section at the top, select the row for
+   the `Path` variable, and select "Edit". In the new window, click the "New"
+   button, to add a new path to this variable (which is a list of paths). Paste
+   / type in `C:\Program Files\arduino-cli`.
+4. Download the latest `protoc-<x.y.z>-win64.zip` from [this 
+   link](https://github.com/protocolbuffers/protobuf/releases). Repeat steps 2
+   and 3 for this ZIP file, though copy the contents of the ZIP file to
+   `C:\Program Files\protoc` and only add `C:\Program Files\protoc\bin` to
+   `Path`.
+5. `cd` to the `olfactometer` directory and (making sure that `python` is
+   running the version of python you expect) run:
+   `python -m pip install .`
+6. Find where the `pip` command in step 5 created the `olf` executable, and add
+   this to `Path` as well. For me, the path I needed to add was the path in the
+   `Location` row of `pip show olfactometer` output with `\Python38\Scripts`
+   appended to the end:
+   `C:\Users\tom\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\LocalCache\local-packages\Python38\Scripts`
+
 
 #### Running
 The `-u` flag is only needed on the first run, or after changing the firmware.

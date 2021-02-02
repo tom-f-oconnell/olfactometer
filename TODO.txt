@@ -1,3 +1,5 @@
+- actually detect port when possible using arduino-cli
+  (rather than just hoping default of /dev/ttyACM0 works...)
 
 - how to organize thing such that it's actually easy to compose this with
   arbitrary scripts to specify trials structures? i'm feeling like i might not

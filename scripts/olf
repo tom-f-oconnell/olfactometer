@@ -2,74 +2,9 @@
 
 import argparse
 
-from olfactometer import main
+from olfactometer import main_cli
+
 
 
 if __name__ == '__main__':
-    # TODO try to refactor to inherit / share (at least some?) command line
-    # arguments with upload.py ?
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-u', '--upload', action='store_true', default=False,
-        help='also uploads Arduino code before running'
-    )
-    # TODO just detect? or still have this as an option? maybe have on default,
-    # and detect by default? (might not be very easy to detect with docker,
-    # at least not without using privileged mode as opposed to just passing one
-    # specific port... https://stackoverflow.com/questions/24225647 )
-    # maybe just use privileged though?
-    parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
-        help='port the Arduino is connected to. '
-        'For uploading and communication.'
-    )
-    parser.add_argument('-f', '--fqbn', action='store', default=None,
-        help='Fully Qualified Board Name, e.g.: arduino:avr:uno. corresponds to'
-        ' arduino-cli -b/--fqbn. mainly for testing compilation with other '
-        'boards. your connected board should be detected without needing to '
-        'pass this.'
-    )
-    parser.add_argument('-a', '--allow-version-mismatch', action='store_true',
-        default=False, help='unless passed, git hash of arduino code will be '
-        'checked against git hash of python code, and it will not let you '
-        'proceed unless they match. re-upload arduino code with clean '
-        '"git status" to fix mismatch without this flag.'
-    )
-    parser.add_argument('-t', '--try-parse', action='store_true', default=False,
-        help='exit after attempting to parse config. no need for a connected '
-        'Arduino.'
-    )
-    parser.add_argument('-i', '--ignore-ack', action='store_true',
-        default=False, help='ignores acknowledgement message #s arduino sends. '
-        'makes viewing all debug prints easier, as no worry they will interfere'
-        ' with receipt of message number.'
-    )
-    # TODO document OLFACTOMETER_DEFAULT_HARDWARE, and interactions with the
-    # same keys already present in some YAML
-    # TODO maybe use defs of these env vars from util rather than retyping here
-    parser.add_argument('-r', '--hardware', action='store', default=None,
-        help='[path to / prefix of] config specifying available valve pins and'
-        'other important pins for a particular physical olfactometer. config '
-        'must be under OLFACTOMETER_HARDWARE_DIR to refer by prefix. see also '
-        'OLFACTOMETER_DEFAULT_HARDWARE.'
-    )
-    parser.add_argument('-v', '--verbose', action='store_true', default=False)
-    parser.add_argument('config_path', type=str, nargs='?', default=None,
-        help='.json/.yaml file containing all required data. see `load` '
-        'function. reads config from stdin if not passed.'
-    )
-    args = parser.parse_args()
-
-    do_upload = args.upload
-    port = args.port
-    fqbn = args.fqbn
-    allow_version_mismatch = args.allow_version_mismatch
-    try_parse = args.try_parse
-    ignore_ack = args.ignore_ack
-    hardware_config = args.hardware
-    verbose = args.verbose
-    config_path = args.config_path
-
-    main(config_path, port=port, fqbn=fqbn, do_upload=do_upload,
-        allow_version_mismatch=allow_version_mismatch,
-        ignore_ack=ignore_ack, try_parse=try_parse,
-        hardware_config=hardware_config, verbose=verbose
-    )
+    main_cli()

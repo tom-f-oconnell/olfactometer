@@ -29,6 +29,8 @@ setup(
         # See note in package_data section below about trying to install
         # generator that comes with the nanopb submodule we have.
         # TL;DR using this package for simplicity.
+        # TODO is this still used? check in fresh 18.04 vm and delete if not
+        # (test both with and without docker)
         'nanopb',
 
         # TODO TODO delete after debugging
@@ -49,10 +51,16 @@ setup(
     scripts=[
         # TODO can try to change names back once get everything working with
         # unique names
-        'scripts/olf',
+        #'scripts/olf',
         'scripts/olf-upload',
         'scripts/olf-version-str'
     ],
+    # TODO see if this is an acceptable substitue for 'olf' script in `scripts`
+    # arg above. if so, maybe delete its line above and the corresponding file.
+    # and also maybe use for the other two scripts
+    entry_points={
+        'console_scripts': ['olf=olfactometer:main_cli'],
+    },
     # TODO will including stuff above package dir prevent some things from
     # working? like building a wheel?
     # Seems to work with python==3.6.9 pip==20.2.2 setuptools==39.0.1
