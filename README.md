@@ -99,13 +99,8 @@ for you for some reason. You must verify that things are working as you intend.
 #### Dependencies
 - `python3.6+`
 - `protoc>=3.0.0`
-- `arduino-cli` (`setup_arduino-cli.sh` may at least provide hints on what steps
-   are required on Windows here)
+- `arduino-cli`
 - A recent version of `pip` (`20.2.2` definitely works, `9.0.1` does not)
-
-
-#### Windows 
-
 
 #### Installation
 ```
@@ -132,32 +127,71 @@ After you have installed the necessary dependencies:
 pip install .
 ```
 
-If you are on Windows, after making sure that `python>=3.6` and `git` are
-installed:
-1. Download `arduino-cli.zip` from their website
-2. Extract and copy to `C:\Program Files\arduino-cli`, so that inside this new
-   folder there is the `arduino-cli.exe` from the ZIP file.
-3. Add `C:Program Files\arduino-cli` to your `Path` environment variable, by
+##### Windows
+<details><summary>Windows specific installation instructions (click to expand)</summary>
+1. Make sure that `python>=3.6` and `git` are installed. Git bash can be used for
+   most / all of the commands below, or the Windows command prompt if you'd rather 
+   / if Git bash has issues.
+
+2. Follow the installation steps above, except `pip install .`
+
+3. Download `arduino-cli` ZIP file [here](https://arduino.github.io/arduino-cli/latest/installation/),
+   by following the `Windows 64 bit` link.
+
+4. Extract and copy to `C:\Program Files\arduino-cli`, so that directly inside
+   this new folder there is the `arduino-cli.exe` from the ZIP file.
+
+5. Add `C:Program Files\arduino-cli` to your `Path` environment variable, by
    pressing the Windows key, searching for "environment variable", clicking the
-   result (works in Windows 10 at least), and then clicking the `Environment
-   Variables...` button at the bottom of the window that pops up. In the
-   "User variables for <your-username>" section at the top, select the row for
-   the `Path` variable, and select "Edit". In the new window, click the "New"
-   button, to add a new path to this variable (which is a list of paths). Paste
-   / type in `C:\Program Files\arduino-cli`.
-4. Download the latest `protoc-<x.y.z>-win64.zip` from [this 
-   link](https://github.com/protocolbuffers/protobuf/releases). Repeat steps 2
-   and 3 for this ZIP file, though copy the contents of the ZIP file to
+   result, and then clicking the `Environment Variables...` button at the
+   bottom of the window that pops up. In the "User variables for
+   <your-username>" section at the top, select the row for the `Path` variable,
+   and select "Edit". In the new window, click the "New" button, to add a new
+   path to this variable (which is a list of paths). Paste / type in
+   `C:\Program Files\arduino-cli`.
+
+   The above works for Windows 10. For Windows 7, you will need to select
+   "Edit the system environment variables" from the search under the Windows key.
+   Then the relevant variable will be "Path" under the "System variables" section.
+   You will need to add (`;` separated) paths manually to this string.
+
+6. To finish setting up `arduino-cli`:
+
+    ```
+    arduino-cli core update-index
+    arduino-cli core install arduino:avr
+    ```
+
+    You may need to answer a GUI prompt for administrator privileges for the
+    second step above.
+
+7. Download the latest `protoc-<x.y.z>-win64.zip` from [this 
+   link](https://github.com/protocolbuffers/protobuf/releases). Repeat steps 4
+   and 5 for this ZIP file, though copy the contents of the ZIP file to
    `C:\Program Files\protoc` and only add `C:\Program Files\protoc\bin` to
    `Path`.
-5. `cd` to the `olfactometer` directory and (making sure that `python` is
+
+8. `cd` to the `olfactometer` directory and (making sure that `python` is
    running the version of python you expect) run:
    `python -m pip install .`
-6. Find where the `pip` command in step 5 created the `olf` executable, and add
+
+9. Find where the `pip` command in step 8 created the `olf` executable, and add
    this to `Path` as well. For me, the path I needed to add was the path in the
-   `Location` row of `pip show olfactometer` output with `\Python38\Scripts`
+   `Location` row of `python -m pip show olfactometer` output with `\Python38\Scripts`
    appended to the end:
    `C:\Users\tom\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\LocalCache\local-packages\Python38\Scripts`
+
+   If `python -m pip show` doesn't work, you can also try:
+
+    ```
+    $ python
+    >>> import olfactometer # don't call this from either <olfactometer> or the directory containing it
+    >>> olfactometer.__file__
+    ```
+   
+   ...and look around the directory that is output.
+
+</details>
 
 
 #### Running
@@ -165,6 +199,14 @@ The `-u` flag is only needed on the first run, or after changing the firmware.
 ```
 olf -p <COM-port-of-your-Arduino> -u <config-file>
 ```
+
+If you are not using the Docker version and you are unsure which port your
+Arduino is on, you can run:
+```
+arduino-cli board list
+```
+...and note the value for the `Port` column in the row where `Board Name` is correct.
+You can do the same via the Arduino GUI if you have it installed.
 
 
 ### Building Docker image

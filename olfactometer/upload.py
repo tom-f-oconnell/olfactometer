@@ -329,7 +329,10 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
 
         # This is because arduino-cli hangs for a while (maybe indefinitely?)
         # if it does not exist.
-        if not exists(port):
+        # Checking 'nt' because it seems it's maybe not a regular file on
+        # Windows 7, at least from Git bash. It does work in Git bash though,
+        # despite the fact that the `exists` check would fail.
+        if not exists(port) and os.name != 'nt':
             raise IOError(f'port {port} does not exist. '
                 'is the Arduino connected?'
             )
