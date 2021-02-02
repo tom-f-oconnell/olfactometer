@@ -129,6 +129,7 @@ pip install .
 
 ##### Windows
 <details><summary>Windows specific installation instructions (click to expand)</summary>
+
 1. Make sure that `python>=3.6` and `git` are installed. Git bash can be used for
    most / all of the commands below, or the Windows command prompt if you'd rather 
    / if Git bash has issues.
@@ -190,6 +191,15 @@ pip install .
     ```
    
    ...and look around the directory that is output.
+
+10. If you plan to run `olf` from Git bash, rather than the Windows command prompt,
+    then you should edit `~/.bashrc` to add the line:
+
+    ```
+    export PYTHONUNBUFFERED=1
+    ```
+    
+    ...so that interactive output when running stimulus programs is not delayed.
 
 </details>
 
