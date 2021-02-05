@@ -37,6 +37,7 @@ post_pulse_s: 11
 # an additional top-level `randomize_pins2odors: False` or something is present)
 
 import random
+import warnings
 
 from olfactometer.generators import common
 
@@ -93,9 +94,18 @@ def make_config_dict(generator_config_yaml_dict):
     randomize_presentation_order = data['randomize_presentation_order']
     assert randomize_presentation_order in (True, False)
 
-    # TODO TODO add support for multiple trials (and then probably also allow
-    # them to be grouped in repeated presentations or have everything
-    # randomized)
+    n_trials_key = 'n_trials'
+    if n_trials_key in data:
+        n_trials = data[n_trials_key]
+        # TODO TODO maybe rename randomize_presentation_order and/or add another
+        # possible value and/or add another flag for controlling whether
+        # presentations of a particular odor should be kept together
+        warnings.warn('current implementation only randomizes across odors, '
+            'keeping presentations of any given odor together'
+        )
+    else:
+        n_trials = 1
+
     trial_pins = odor_pins
     if randomize_presentation_order:
         # This re-orders odor_pins in-place (it modifies it, rather than
@@ -104,12 +114,20 @@ def make_config_dict(generator_config_yaml_dict):
 
     # No mixtures supported in this config generation function
     if single_manifold:
-        pinlist_at_each_trial = [[p] for p in trial_pins]
+        # Here the balance is handled by the 'balance_pin' setting, so it
+        # doesn't need to explicitly be included in each pin list. The firmware
+        # doesn't have a notion of multiple manifolds / balance though, so we
+        # need to handle the balances exlicitly in that case.
+        pinlist_at_each_trial = [
+            [p] for p in trial_pins for _ in range(n_trials)
+        ]
     else:
         # Since the global balance is disable in the !single_manifold case, we
         # need to explicitly tell the correct balance pin to trigger alongside
         # each odor pin.
-        pinlist_at_each_trial = [[p, pins2balances[p]] for p in trial_pins]
+        pinlist_at_each_trial = [[p, pins2balances[p]] for p in trial_pins
+            for _ in range(n_trials)
+        ]
 
     generated_config_dict['pins2odors'] = pins2odors
     common.add_pinlist(pinlist_at_each_trial, generated_config_dict)
