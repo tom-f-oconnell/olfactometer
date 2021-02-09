@@ -147,6 +147,8 @@ def parse_common_settings(data, generated_config_dict=None):
     return generated_config_dict
 
 
+# TODO maybe this should also take config_dict, and it should add balance_pin to
+# settings, rather than get_available_pins?
 def add_balance_pins(pinlist_at_each_trial, pins2balances):
     """Returns pinlist like input, but with balance pins added to each list.
 

@@ -27,6 +27,10 @@ def main_cli():
         help='.json/.yaml file containing all required data. see `load` '
         'function. reads config from stdin if not passed.'
     )
+    # TODO TODO add an arg to shorten all valve OFF periods to a fixed value /
+    # value scaled from original / value derived by subtracting from original
+    # (something like --shorten-offs-by/--override-off-secs), for testing
+    # stimulus programs quickly. warn that it should only be used for testing.
     args = parser.parse_args()
 
     # TODO maybe add arg to specify generated YAML w/ pins2odors to use?
@@ -171,9 +175,17 @@ def valve_test_cli():
     del trial_pins
 
     if use_balances:
+        # This does nothing in single_manifold case.
         pinlist_at_each_trial = common.add_balance_pins(
             pinlist_at_each_trial, pins2balances
         )
+        if single_manifold:
+            # Normally `common.get_available_pins` would set this, but doing
+            # this (same as what it does) rather than calling it twice.
+            balance_pin = list(set(pins2balances.values()))[0]
+            settings_dict = generated_config_dict[common.settings_key]
+            settings_dict['balance_pin'] = balance_pin
+            del balance_pin, settings_dict
 
     common.add_pinlist(pinlist_at_each_trial, generated_config_dict)
 
