@@ -111,6 +111,11 @@ def parse_common_settings(data, generated_config_dict=None):
     Takes config dict, and adds populated values for the 'timing',
     'timing_output_pin', and 'recording_indicator_pin' to generated_config_dict.
 
+    Via `parse_pulse_timing_s_to_us`, also expects:
+    - 'pre_pulse_s'
+    - 'pulse_s'
+    - 'post_pulse_s'
+
     Returns the modified / created generated_config_dict. Creates if not passed.
     """
     validate_nonvalve_pins(data)

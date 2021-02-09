@@ -1,0 +1,39 @@
+
+- functions to allow running generators standalone (to produce output
+  either printed or at a path specified at input, for inspection)?
+
+- maybe some other way of implementing generators (OOP?) would make it
+  easier to extend some of the builtin ones? and *maybe* that'd be desirable?
+  get concrete example before serious consideration...
+
+- in core stuff (outside generators), validation for what an odor (dict w/
+  just name, log10_conc keys and correct type on RHS?) should be represented as
+  (to share across generators)? or is that moving too close to trying to
+  implement support for all possible trial structures?
+
+- if always taking filename input, maybe print which one used and copy its
+  contents as part of metadata output in olfactometer code that invokes the
+  generators?
+
+- if further requiring it to always be YAML, maybe check it's valid YAML
+  outside of the individual generators? tradeoff between flexibility and
+  consistent expectations i guess. though if i'm allowing arbitrary generators
+  (outside of this source control...) maybe i would need to copy the python as
+  well anyway, and then maybe all the config could just be in python, editing
+  the generator as necessary? i do kind of like further seperation of code and
+  config, even if this one part of the config is code itself, but it could be
+  written by less people than the number who use it by just making their own
+  YAML inputs...
+
+- maybe support passing any unparsed YAML input params through to
+  olfactometer YAML? or put them under a separate YAML dict to make that
+  explicit? maybe could then check between those and remainder, all are parsed
+  either here or in downstream YAML parsing? not sure...
+  (would all require input *is* a YAML)
+
+- add 'abbrev'/'abbreviation' key to shared odor representation support?
+  (alongside 'name' and 'log10_conc')
+
+- maybe also just permit arbitrary extra metadata keys on the odors, for
+  example to specify target glomeruli for a panel of private (diagnostic) odors?
+

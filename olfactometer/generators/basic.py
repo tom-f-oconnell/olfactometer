@@ -58,9 +58,31 @@ def make_config_dict(generator_config_yaml_dict):
     which is for tracking which odors certain pins corresponded to, at analysis
     time.
 
-    (not yet supported) When passed a Python file, rather than directly usable
-    configuration YAML, the olfactometer will expect the Python file to have a
-    function with this name and this output behavior.
+    Used keys in the YAML that gets parsed and input to this function (as a
+    dict):
+    - Used via `common.parse_common_settings`:
+      - 'pre_pulse_s'
+      - 'pulse_s'
+      - 'post_pulse_s'
+      - 'timing_output_pin' (optional)
+        - Should be specified in separate hardware config.
+
+      - 'recording_indicator_pin' (optional)
+        - Should be specified in separate hardware config.
+
+    - Used via `common.get_available_pins`:
+      - Either:
+        - All of the keys in `common.single_manifold_specific_keys`, OR...
+        - All of the keys in `common.two_manifold_specific_keys`
+
+        In both cases above, those parameters should be specified in separate
+        hardware config.
+
+    - Used directly in this function:
+      - 'odors'
+      - 'randomize_presentation_order'
+      - 'n_repeats' (optional, defaults to 1)
+
     """
     data = generator_config_yaml_dict
 
@@ -123,56 +145,5 @@ def make_config_dict(generator_config_yaml_dict):
     generated_config_dict['pins2odors'] = pins2odors
     common.add_pinlist(pinlist_at_each_trial, generated_config_dict)
 
-    # TODO functions to allow running generators standalone (to produce output
-    # either printed or at a path specified at input, for inspection)?
-
     return generated_config_dict
-
-
-# TODO maybe some other way of implementing generators (OOP?) would make it
-# easier to extend some of the builtin ones? and *maybe* that'd be desirable?
-# get concrete example before serious consideration...
-
-# TODO maybe map from (bool?) kwargs to appropriate YAML input in calls to this
-# config fn, and don't actually do YAML parsing here? or some other way to
-# translate from either (portions of) the input YAML (maybe just parse some and
-# return unparsed stuff) or command line args to kwargs here?
-
-# TODO in core stuff (outside generators), validation for what an odor (dict w/
-# just name, log10_conc keys and correct type on RHS?) should be represented as
-# (to share across generators)? or is that moving too close to trying to
-# implement support for all possible trial structures?
-
-# TODO TODO how to make configuration of input general across generators,
-# including those not-yet-implemented? (i.e. do i expect all generators to take
-# an input filename, and let them do with it as they want?)
-# or should i just use linux shell to compose generators with olfactometer?
-# i'm almost sure there would be some big downsides to the shell approach...
-# TODO if always taking filename input, maybe print which one used and copy its
-# contents as part of metadata output in olfactometer code that invokes the
-# generators?
-# TODO if further requiring it to always be YAML, maybe check it's valid YAML
-# outside of the individual generators? tradeoff between flexibility and
-# consistent expectations i guess. though if i'm allowing arbitrary generators
-# (outside of this source control...) maybe i would need to copy the python as
-# well anyway, and then maybe all the config could just be in python, editing
-# the generator as necessary? i do kind of like further seperation of code and
-# config, even if this one part of the config is code itself, but it could be
-# written by less people than the number who use it by just making their own
-# YAML inputs...
-# TODO maybe support passing any unparsed YAML input params through to
-# olfactometer YAML? or put them under a separate YAML dict to make that
-# explicit? maybe could then check between those and remainder, all are parsed
-# either here or in downstream YAML parsing? not sure...
-# (would all require input *is* a YAML)
-
-# TODO add 'abbrev'/'abbreviation' key to shared odor representation support?
-# (alongside 'name' and 'log10_conc')
-# TODO maybe also just permit arbitrary extra metadata keys on the odors, for
-# example to specify target glomeruli for a panel of private (diagnostic) odors?
-
-# TODO maybe take a 'generator: <x>' YAML arg (to olfactometer, not a generator)
-# to specify the generator, and use this to assume rest of YAML should be passed
-# to that *built-in* generator, rather than specifying the path to a custom
-# generator
 

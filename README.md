@@ -249,7 +249,10 @@ You may set `OLFACTOMETER_DEFAULT_HARDWARE` to a directory that contains YAML
 config files (`.yaml` suffix), and then use `OLFACTOMETER_DEFAULT_HARDWARE` to
 control which hardware is used by default. These options are only relevant for
 either config files that have a `generator: <generator-name>` line or when using
-`olf-test-valves`.
+`olf-test-valves`. For more information on how generators can be used, see 
+[my repo](https://github.com/tom-f-oconnell/tom_olfactometer_configs) of config
+files for use with this repo, as well as the `olfactometer/generators` directory
+within this repo.
 
 If you are using Windows, see the Windows installation instructions above for
 steps to set environment variables.
