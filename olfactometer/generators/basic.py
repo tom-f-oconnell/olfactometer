@@ -4,7 +4,7 @@ them, either in the order in the YAML or randomly. Odors are assigned to random
 valves from the set of available valves (identified by the pin number driving
 them).
 
-I have not yet implemented support for repeated presentations of the same odor.
+No mixtures (across odor vials) supported in this config generation function.
 
 Only planning on supporting the case where the number of odors in the panel can
 fit into the number of valves available in the particular hardware.
@@ -35,15 +35,15 @@ post_pulse_s: 11
 """
 # TODO probably support a `pin` key for each odor (perhaps allowed+required iff
 # an additional top-level `randomize_pins2odors: False` or something is present)
+# TODO similarly, maybe allow not randomizing the balance pin, to be less
+# annoying about swapping stuff out (or not randomizing beyond first expt in a
+# series? probably don't want to go so far as to cache which pin(s) they are
+# across runs of this though...)
 
 import random
 import warnings
 
 from olfactometer.generators import common
-
-# (implement either something like this, used in place of yaml loading here, or
-# some OOP thing, when i extend support to a second+ generator)
-#from olfactometer import parse_common_generator_config
 
 
 def make_config_dict(generator_config_yaml_dict):
@@ -58,9 +58,9 @@ def make_config_dict(generator_config_yaml_dict):
     which is for tracking which odors certain pins corresponded to, at analysis
     time.
 
-    When passed a Python file, rather than directly usable configuration YAML,
-    the olfactometer will expect the Python file to have a function with this
-    name and this output behavior. 
+    (not yet supported) When passed a Python file, rather than directly usable
+    configuration YAML, the olfactometer will expect the Python file to have a
+    function with this name and this output behavior.
     """
     data = generator_config_yaml_dict
 
@@ -94,9 +94,9 @@ def make_config_dict(generator_config_yaml_dict):
     randomize_presentation_order = data['randomize_presentation_order']
     assert randomize_presentation_order in (True, False)
 
-    n_trials_key = 'n_trials'
-    if n_trials_key in data:
-        n_trials = data[n_trials_key]
+    n_repeats_key = 'n_repeats'
+    if n_repeats_key in data:
+        n_repeats = data[n_repeats_key]
         # TODO TODO maybe rename randomize_presentation_order and/or add another
         # possible value and/or add another flag for controlling whether
         # presentations of a particular odor should be kept together
@@ -104,7 +104,7 @@ def make_config_dict(generator_config_yaml_dict):
             'keeping presentations of any given odor together'
         )
     else:
-        n_trials = 1
+        n_repeats = 1
 
     trial_pins = odor_pins
     if randomize_presentation_order:
@@ -112,22 +112,13 @@ def make_config_dict(generator_config_yaml_dict):
         # returning something modified).
         random.shuffle(trial_pins)
 
-    # No mixtures supported in this config generation function
-    if single_manifold:
-        # Here the balance is handled by the 'balance_pin' setting, so it
-        # doesn't need to explicitly be included in each pin list. The firmware
-        # doesn't have a notion of multiple manifolds / balance though, so we
-        # need to handle the balances exlicitly in that case.
-        pinlist_at_each_trial = [
-            [p] for p in trial_pins for _ in range(n_trials)
-        ]
-    else:
-        # Since the global balance is disable in the !single_manifold case, we
-        # need to explicitly tell the correct balance pin to trigger alongside
-        # each odor pin.
-        pinlist_at_each_trial = [[p, pins2balances[p]] for p in trial_pins
-            for _ in range(n_trials)
-        ]
+    # TODO worth factoring this into a fn in common for expanding to # of
+    # trials? could accept arbitrary lists?
+    trial_pinlists = [[p] for p in trial_pins for _ in range(n_repeats)]
+
+    pinlist_at_each_trial = common.add_balance_pins(
+        trial_pinlists, pins2balances
+    )
 
     generated_config_dict['pins2odors'] = pins2odors
     common.add_pinlist(pinlist_at_each_trial, generated_config_dict)

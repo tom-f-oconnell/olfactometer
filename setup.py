@@ -45,21 +45,16 @@ setup(
         'pytest',
         'inflection'
     ],
-    # Going to just try using 'python -m <...>' syntax for calling these scripts
-    # now. Some problems could probably be avoided by refactoring so scripts and
-    # module 'olfactometer.py' have different names, but not sure...
-    scripts=[
-        # TODO can try to change names back once get everything working with
-        # unique names
-        #'scripts/olf',
-        'scripts/olf-upload',
-        'scripts/olf-version-str'
-    ],
-    # TODO see if this is an acceptable substitue for 'olf' script in `scripts`
-    # arg above. if so, maybe delete its line above and the corresponding file.
-    # and also maybe use for the other two scripts
     entry_points={
-        'console_scripts': ['olf=olfactometer:main_cli'],
+        'console_scripts': [
+            'olf=olfactometer:main_cli',
+            # TODO still want the olf prefix for this one?
+            'olf-test-valves=olfactometer:valve_test_cli',
+            'olf-upload=olfactometer:upload_cli',
+            # See TODO in upload.version_str definition. until it's addressed,
+            # that function won't be able to provide any meaningful output
+            #'olf-version-str=olfactometer:version_str',
+        ],
     },
     # TODO will including stuff above package dir prevent some things from
     # working? like building a wheel?

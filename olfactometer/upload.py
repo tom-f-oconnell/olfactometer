@@ -9,6 +9,7 @@ import tempfile
 import warnings
 import sys
 
+import olfactometer
 from olfactometer import util
 
 
@@ -72,7 +73,7 @@ def make_arduino_sketch_and_libraries(sketch_dir, arduino_lib_dir,
     sketch_dir = abspath(sketch_dir)
     arduino_lib_dir = abspath(arduino_lib_dir)
 
-    if os.name == 'nt':
+    if util.in_windows():
         warnings.warn('copying rather than symlinking in sketch + library '
             'creation, because easier on Windows'
         )
@@ -225,6 +226,18 @@ no_version_available_str = 'no_version_available'
 def version_str(update_check=False, update_on_prompt=False):
     """Returns either git hash of this repo or a str indicating none was usable.
     """
+    # TODO TODO TODO need search_parent_directories in git.Repo call below? or
+    # can i get away without it, maybe with some other processing? cause with
+    # it, if i have olfactometer installed in a venv contained inside another
+    # git repo, this returns the git hash for THAT project! (disabling all the
+    # version checking until this is fixed / i have some way to get a sensible
+    # version when deploying via pip)
+    # (some other TODOs below related to above...)
+    return no_version_available_str
+
+    # NOTE: code below here (in this function) is currently unreachable
+    raise NotImplementedError
+
     if update_on_prompt:
         update_check = True
 
@@ -305,6 +318,9 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
     # (at least, if they'll both be under my root tmpdir anyway...)
 
     if build_root is None:
+        # TODO TODO TODO make sure there are no windows-specific problems with
+        # this usage of TemporaryDirectory, as there may have been w/
+        # NamedTemp...
         td_tmp_build_dir = tempfile.TemporaryDirectory()
         build_root = td_tmp_build_dir.name
     else:
@@ -329,10 +345,10 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
 
         # This is because arduino-cli hangs for a while (maybe indefinitely?)
         # if it does not exist.
-        # Checking 'nt' because it seems it's maybe not a regular file on
+        # Checking for Windows because it seems it's maybe not a regular file on
         # Windows 7, at least from Git bash. It does work in Git bash though,
         # despite the fact that the `exists` check would fail.
-        if not exists(port) and os.name != 'nt':
+        if not exists(port) and not util.in_windows():
             raise IOError(f'port {port} does not exist. '
                 'is the Arduino connected?'
             )

@@ -15,6 +15,7 @@ import json
 import argparse
 
 import serial
+# TODO try to find a way of accessing this type without any prefix '_'s
 from google.protobuf.internal.encoder import _VarintBytes
 from google.protobuf import json_format, pyext
 import yaml
@@ -71,28 +72,12 @@ if not in_docker:
 from olfactometer import olf_pb2
 
 
-'''
-if in_docker:
-    # TODO TODO TODO does need to set PYTHONUNBUFFERED=1 bode poorly for latency
-    # of pyserial communication / need to flush that? (ultimately test docker
-    # deployment [perhaps also including specifically on windows, if that even
-    # works with pyserial] with hardware recording the outputs to verify the
-    # timing in software)
-    # TODO one test might be serial writing something to arduino which should
-    # trigger a led change, immediately followed by time.sleep, and see if the
-    # LED change happens any more reliably / with lower latency without docker.
-    # need a read test too though, + better tests.
-    # TODO TODO maybe also flush after each serial read / write here, or
-    # change some of the other pyserial settings?
-'''
-    
-
 nanopb_options_path = join(this_package_dir, 'olf.options')
 with open(nanopb_options_path, 'r') as f:
     lines = [x.strip() for x in f.readlines()]
 nanopb_options_lines = [x for x in lines if len(x) > 0 and not x[0] == '#']
 
-# TODO implement preprocessing of config from intermediate (dict probably?  yaml
+# TODO implement preprocessing of config from intermediate (dict probably? yaml
 # and json loaders can be configured to give comprable output?) to infer keys
 # that aren't really necessary (like pinGroups / pins) (and maybe allow 'pins'
 # to be used in place of pinSequence? could be a mess for maintainability
@@ -100,60 +85,47 @@ nanopb_options_lines = [x for x in lines if len(x) > 0 and not x[0] == '#']
 # TODO maybe try nesting the PinGroup object into the other message type, and
 # see if that changes the json syntax? (would have to adapt C code a bit though,
 # AND might prevent nanopb from optimizing as much from the *.options)
-# TODO TODO and also probably allow seconds / ms units for PulseTiming fields
+# TODO and also probably allow seconds / ms units for PulseTiming fields
+# (already have some of this stuff in generator stuff, though not sure if i want
+# to also expose it here...)
 
 # TODO depending on how i check for the 'generator' tag in the config, if i'm
 # still going to use that, might want to validate json and yaml equally to check
 # they don't have that tag, if in docker, since what that would trigger
-# currently wouldn't work in docker
+# currently wouldn't work in docker (since can't write files, as-is)
 
 
-def check_need_to_preprocess_config(config_path, hardware_config=None):
-    # TODO update doc to indicate directory case if i'm going to support that
-    """Returns input or new pre-processed config_path, if it input requests it.
+hardware_dir_envvar = 'OLFACTOMETER_HARDWARE_DIR'
+default_hardware_envvar = 'OLFACTOMETER_DEFAULT_HARDWARE'
+
+def load_hardware_config(hardware_config=None, required=False):
+    """Returns dict loaded from YAML hardware config or None if no config.
+
+    Args:
+    hardware_config (optional str): (default=`None`) path to YAML config file,
+        or prefix of one of the YAML files under `hardware_dir_envvar`.
+        If `None`, will try `hardware_dir_envvar` and `default_hardware_envvar`.
+
+    required (optional bool): (default=`False`) if `True`, will raise IOError,
+        rather than returning `None`, if no hardware config is found.
+
+    Raises `IOError` if some required file / directory is not found.
     """
-    # We need to save the generated YAML in this case, because otherwise we
-    # would lose metadata crucial for analyzing corresponding data, and I
-    # haven't yet figured out a way to do it in Docker (options seem to
-    # exist, but I'd need to provide instructions, test it, etc). So for
-    # now, I'm just not supporting this case. Could manually run generators
-    # in advance (maybe provide instructions for that? or **maybe** have
-    # that be the norm?)
-    if in_docker:
-        # We can't read it to check, because that would read to end of stdin,
-        # which is the input in that case. Would need to do some other trick,
-        # which would probably require some light refactoring.
-        warnings.warn('not checking for need to pre-process config, because not'
-            ' currently supported from Dockerized deployment'
-        )
-        return config_path
+    # TODO add command line arg to list hardware and exit or separate script to
+    # do so (maybe also printing out env var values (if set) and data in each of
+    # the hardware config files) (maybe [also] list all this stuff if hardware
+    # specified is invalid?)
 
-    # TODO TODO refactor so json case isn't left out from generator handling (or
-    # just drop json support, which might make more sense...)
-    if config_path.endswith('.json'):
-        warnings.warn('not checking for need to pre-process config, because not'
-            ' currently support in the JSON input case'
-        )
-        return config_path
-
-    # Not making an error here just to avoid duplicating validation in input
-    # done in load(...)
-    if not config_path.endswith('.yaml'):
-        return config_path
-
-    # TODO so that i don't need to worry about preventing these errors if the
-    # yaml has equivalent data, just always err if one of these things is set
-    # and the confnig tries to override it?
-
-    # TODO TODO add command line arg to list hardware and exit or separate
-    # script to do so (maybe also printing out env var values (if set) and data
-    # in each of the hardware config files)
-    # (maybe [also] list all this stuff if hardware specified is invalid?)
-
-    # TODO (probably simultaneously w/ fixing json support wrt config_path)
+    # TODO (probably simultaneously w/ fixing json support wrt `config`)
     # refactor handling of this to also support json
-    hardware_dir_envvar = 'OLFACTOMETER_HARDWARE_DIR'
     hardware_config_dir = os.environ.get(hardware_dir_envvar)
+
+    if hardware_config_dir is not None:
+        if not isdir(hardware_config_dir):
+            raise IOError(f'environment variable {hardware_dir_envvar}='
+                f'{hardware_config_dir} was specified, but is not an existing '
+                'directory'
+            )
 
     def find_hardware_config(h, err_prefix):
         # We are just taking the chance that this might exist when really we
@@ -168,17 +140,28 @@ def check_need_to_preprocess_config(config_path, hardware_config=None):
                 _hardware_config_path = f
                 break
 
-            # ext includes the '.'
-            prefix, ext = splitext(n)
-            if prefix == h and len(ext) > 1:
-                _hardware_config_path = f
-                break
+            # Using prefix is only allowed if `hardware_config_dir` is specified
+            # (via the environment variable named in `hardware_dir_envvar`).
+            if hardware_config_dir is not None:
+                # ext includes the '.'
+                prefix, ext = splitext(n)
+                if prefix == h and len(ext) > 1:
+                    _hardware_config_path = f
+                    break
 
-        if _hardware_config_path is None:
-            raise IOError(err_prefix + ' is neither a fullpath to a file, nor '
-                f'a file / file prefix directly under {hardware_dir_envvar}='
-                f'{hardware_config_dir}'
-            )
+        # TODO test required logic doesn't break my old usage in check_need_...
+        if required and _hardware_config_path is None:
+            if hardware_config_dir is None:
+                raise IOError(err_prefix + ' is neither a fullpath to a file, '
+                    f'and the environment variable {hardware_dir_envvar} is not'
+                    ' defined, so cannot use a prefix'
+                )
+            else:
+                raise IOError(err_prefix + ' is neither a fullpath to a file, '
+                    'nor a file / file prefix directly under '
+                    f'{hardware_dir_envvar}={hardware_config_dir}'
+                )
+
         return _hardware_config_path
 
     hardware_config_path = None
@@ -187,15 +170,99 @@ def check_need_to_preprocess_config(config_path, hardware_config=None):
             f'hardware_config={hardware_config} was passed, but it'
         )
     else:
-        default_hardware_envvar = 'OLFACTOMETER_DEFAULT_HARDWARE'
         default_hardware = os.environ.get(default_hardware_envvar)
         if default_hardware is not None:
             hardware_config_path = find_hardware_config(default_hardware,
                 f'{default_hardware_envvar}={default_hardware}'
             )
+            # TODO maybe raise separte IOError error here if hardware_dir_envvar
+            # is not defined
 
-    with open(config_path, 'r') as f:
-        generator_yaml_dict = yaml.safe_load(f)
+    if hardware_config_path is not None:
+        print('Using olfactometer hardware definition at:',
+            hardware_config_path
+        )
+        with open(hardware_config_path, 'r') as f:
+            hardware_yaml_dict = yaml.safe_load(f)
+    else:
+        hardware_yaml_dict = None
+
+    return hardware_yaml_dict
+
+
+def in_windows():
+    return os.name == 'nt'
+
+
+def check_need_to_preprocess_config(config, hardware_config=None):
+    # TODO update doc to indicate directory case if i'm going to support that
+    """Returns input or new pre-processed config, if it input requests it.
+
+    If a line like 'generator: <generator-py-file-prefix>' is in the YAML file
+    `olfactometer/generators/<generator-py-file-prefix>.py:make_config_dict`
+    will be used to pre-process the input YAML into a YAML that can be used
+    directly to control a stimulus program.
+
+    See `load_hardware_config` for meaning of `hardware_config` argument.
+    """
+    # We need to save the generated YAML in this case, because otherwise we
+    # would lose metadata crucial for analyzing corresponding data, and I
+    # haven't yet figured out a way to do it in Docker (options seem to
+    # exist, but I'd need to provide instructions, test it, etc). So for
+    # now, I'm just not supporting this case. Could manually run generators
+    # in advance (maybe provide instructions for that? or **maybe** have
+    # that be the norm?)
+    if in_docker:
+        # TODO after refactoring main/run to work with w/ `dict` config input
+        # (rather than just files), could probably relax this restriction, and
+        # just use a `dict` in docker case (there is still the issue of not
+        # being able to save generated outputs, but perhaps that error should be
+        # triggered in the function that would do that)
+
+        # We can't read it to check, because that would read to end of stdin,
+        # which is the input in that case. Would need to do some other trick,
+        # which would probably require some light refactoring.
+        warnings.warn('not checking for need to pre-process config, because not'
+            ' currently supported from Dockerized deployment'
+        )
+        return config
+
+    # It should be a path to a .json/.yaml config file in this case.
+    if type(config) is str:
+        # TODO refactor so json case isn't left out from generator handling
+        # (or just drop json support, which might make more sense...)
+        if config.endswith('.json'):
+            warnings.warn('not checking for need to pre-process config, '
+                'because not currently support in the JSON input case'
+            )
+            return config
+
+        # Not making an error here just to avoid duplicating validation in input
+        # done in load(...)
+        if not config.endswith('.yaml'):
+            return config
+
+        # TODO so that i don't need to worry about preventing these errors if
+        # the yaml has equivalent data, just always err if one of these things
+        # is set and the config tries to override it? (which errors/things?)
+
+        with open(config, 'r') as f:
+            generator_yaml_dict = yaml.safe_load(f)
+
+    elif type(config) is dict:
+        generator_yaml_dict = config
+
+    elif config is None:
+        raise NotImplementedError
+
+    else:
+        # TODO TODO refactor all this config type validation to one fn to
+        # generate this [type of] error
+        raise ValueError('config type not recognized')
+
+    # TODO TODO provide way of listing available generators and certain
+    # documentation about each, like required[/optional] keys, what each does,
+    # as well as maybe printing docstring for each?
 
     # This means that the protobuf message(s) we define will cause problems if
     # it ever also would correspond to YAML/JSON with this 'generator' key at
@@ -206,28 +273,28 @@ def check_need_to_preprocess_config(config_path, hardware_config=None):
         # here) if no generator and if the only indication we should use the
         # hardware config is the default specified in that env var.
         if hardware_config is not None:
-            raise ValueError('hardware_config only valid if using a generator')
+            raise ValueError('hardware_config only valid if using a generator '
+                "(specified via 'generator: <generator-name>' line in YAML "
+                'config)'
+            )
 
-        return config_path
+        return config
 
-    if hardware_config_path is not None:
-        with open(hardware_config_path, 'r') as f:
-            hardware_yaml_dict = yaml.safe_load(f)
+    hardware_yaml_dict = load_hardware_config(hardware_config)
 
+    if hardware_yaml_dict is not None:
         # assumes all hardware specific keys can be detected at the top level
         # (so far the case, i believe, at least for expected inputs to
         # preprocessors)
         if any([k in common.hardware_specific_keys for k in generator_yaml_dict
             ]):
             # so that there is no ambiguity as to which should take precedence
+            # TODO maybe actually embed path to offending config in this case
             raise ValueError('some of hardware_specific_keys='
-                f'{common.hardware_specific_keys} are defined in config_path. '
+                f'{common.hardware_specific_keys} are defined in config. '
                 'this is invalid when hardware_config is specified.'
             )
 
-        print('Using olfactometer hardware definition at:',
-            hardware_config_path
-        )
         generator_yaml_dict.update(hardware_yaml_dict)
         
     generator = generator_yaml_dict['generator']
@@ -241,8 +308,11 @@ def check_need_to_preprocess_config(config_path, hardware_config=None):
     else:
         raise NotImplementedError(f"generator '{generator}' not supported")
 
+    # TODO maybe just pprint the dict? or don't print this line at all in that
+    # case?
+    config_str = config if type(config) is str else 'passed dict'
     print(f"Using the '{generator}' generator configured with "
-        f"{config_path}"
+        f"{config_str}"
     )
     # Output will be either a dict or a list of dicts. In the latter case,
     # each should be written to their own YAML file.
@@ -263,6 +333,7 @@ def check_need_to_preprocess_config(config_path, hardware_config=None):
     # TODO probably want to save generator_yaml_dict (and generator too, if
     # user defined...)? maybe as part of a zip file? or copy alongside w/
     # diff suffix or something?
+    # (though aren't keys from that in generated yaml anyway? or no?)
 
     # TODO might want to refactor so this function can also just return the
     # file contents it just wrote (to not need to re-read them), but then
@@ -300,6 +371,8 @@ def check_need_to_preprocess_config(config_path, hardware_config=None):
         print()
 
         return generated_yaml_fname
+
+    # TODO what type(s) is/are generated_config here? a list of dicts, right?
     else:
         timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
         generated_config_dir = timestamp_str + '_stimuli'
@@ -326,18 +399,23 @@ def check_need_to_preprocess_config(config_path, hardware_config=None):
         return generated_config_dir
 
 
-def _load_helper(filelike2dict_fn, filelike, message=None):
-    """Returns a protobuf message with data from config and extra metadata.
+def load_dict(config_dict, message=None):
+    """Returns a populated protobuf message and a dict with extra metadata.
     """
     if message is None:
         message = olf_pb2.AllRequiredData()
-
-    config_dict = filelike2dict_fn(filelike)
 
     # Always ignoring unknown fields for now, so the generators can store extra
     # metadata for use at analysis only in the same config files.
     json_format.ParseDict(config_dict, message, ignore_unknown_fields=True)
     return message, config_dict
+
+
+def _load_helper(filelike2dict_fn, filelike, message=None):
+    """Returns a populated protobuf message and a dict with extra metadata.
+    """
+    config_dict = filelike2dict_fn(filelike)
+    return load_dict(config_dict, message=message)
 
 
 # TODO update any unit tests involving load_json / load_yaml to ignore new
@@ -363,12 +441,12 @@ def load_yaml(yaml_filelike, message=None):
     return _load_helper(yaml.safe_load, yaml_filelike, message=message)
 
 
-def load(json_or_yaml_path=None):
-    """Parses JSON or YAML file into an AllRequiredData message object.
+def load(config=None):
+    """Parses JSON/YAML file or dict into an AllRequiredData message object.
 
     Args:
-    json_or_yaml_path (str or None): path to JSON or YAML file.
-        must end in .json or .yaml. If `None`, reads from `sys.stdin`
+    config (str|dict|None): If `str`, path to JSON or YAML file, which
+        must end in .json or .yaml. If `None`, reads from `sys.stdin`.
 
     Returns an `olf_pb2.AllRequiredData` object.
     """
@@ -376,7 +454,7 @@ def load(json_or_yaml_path=None):
     # (for interactive stuff during trial, like pausing...) (if not, maybe
     # implement pausing as arduino tracking state and knowing when host
     # disconnects?)
-    if json_or_yaml_path is None:
+    if config is None:
         # Assuming we are reading from `sys.stdin` in this case, as I have not
         # yet settled on other mechanisms for getting files into Docker.
         print('Reading config from stdin')
@@ -394,23 +472,46 @@ def load(json_or_yaml_path=None):
         else:
             suffix = '.yaml'
 
+        if in_windows():
+            # To avoid weird errors with NamedTemporaryFile, which I vaguely
+            # remember hearing didn't work as I need on Windows. See perhaps:
+            # https://stackoverflow.com/questions/2549384
+            # TODO test though. maybe this error is no longer relevant?
+            # TODO maybe i can just do the rest of the stuff inside the tempfile
+            # block? this was just Named for the suffix, right? maybe just
+            # handle that separately (or do other tempfile objects also support
+            # this?)?
+            raise NotImplementedError('using stdin as input not supported in '
+                'Windows'
+            )
+
         with tempfile.NamedTemporaryFile(mode='w', suffix=suffix, delete=False
             ) as temp:
-            json_or_yaml_path = temp.name
+            config = temp.name
             temp.write(stdin_str)
 
     all_required_data = olf_pb2.AllRequiredData()
 
-    with open(json_or_yaml_path, 'r') as f:
-        if json_or_yaml_path.endswith('.json'):
-            # First return argument is just the same as the second argument. No
-            # need to store it again, as it's mutated.
-            _, config_dict = load_json(f, all_required_data)
+    if type(config) is dict:
+        _, config_dict = load_dict(config, all_required_data)
 
-        elif json_or_yaml_path.endswith('.yaml'):
-            _, config_dict = load_yaml(f, all_required_data)
-        else:
-            raise ValueError('file must end with either .json or .yaml')
+    elif type(config) is str:
+        with open(config, 'r') as f:
+            if config.endswith('.json'):
+                # First return argument is just the same as the second argument.
+                # No need to store it again, as it's mutated.
+                _, config_dict = load_json(f, all_required_data)
+
+            elif config.endswith('.yaml'):
+                _, config_dict = load_yaml(f, all_required_data)
+            else:
+                raise ValueError('file must end with either .json or .yaml')
+
+    else:
+        # TODO i think i have a few such error lines now. maybe factor out?
+        raise ValueError(f'unrecognized config type {type(config)}. must be str'
+            ' path to .yaml/.json config or dict'
+        )
 
     return all_required_data, config_dict
 
@@ -477,7 +578,7 @@ def validate_settings(settings, **kwargs):
                 'in place of the PulseTiming option'
             )
     if settings.no_ack:
-        raise ValueError('only -i command line arg should set settings.no_ack')
+        raise ValueError('only -k command line arg should set settings.no_ack')
 
 
 def validate_pin_sequence(pin_sequence, warn=True):
@@ -521,6 +622,7 @@ def validate_pin(pin):
         raise ValueError('pin numbers >53 invalid')
 
 
+# TODO why do i have this taking **kwargs again?
 def validate_pin_group(pin_group, **kwargs):
     """Raises ValueError if invalid pin_group is detected.
     """
@@ -843,7 +945,6 @@ def print_odor(odor_dict):
 # and pins2odors, and prints it all nicely
 
 
-
 # TODO TODO maybe add a block=True flag to allow (w/ =False) to return, to not
 # need to start this function in a new thread or process when trying to run the
 # olfactometer and other code from one python script. not needed as a command
@@ -854,14 +955,13 @@ def print_odor(odor_dict):
 # of util.py from the cwd, if cwd=~/src/olfactometer) has changes not reflected
 # in the version of the installed `olf` script)
 baud_rate = None
-def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
+def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     allow_version_mismatch=False, ignore_ack=False, try_parse=False,
-    timeout_s=2.0, pause_for_odor_connecting=True, verbose=False,
-    _first_run=True):
+    timeout_s=2.0, pause_before_start=True, verbose=False, _first_run=True):
     """Runs a single configuration file on the olfactometer.
 
     Args:
-    config_path (str or None): path to YAML or JSON file with settings
+    config (str|dict|None): path to YAML or JSON file with settings
         defining the olfactometer behavior. If `None` is passed, the config is
         read from stdin.
     """
@@ -872,7 +972,7 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     curr_msg_num = 0
 
     # TODO rename all_required_data to indicate it is the protobuf message(s)?
-    all_required_data, config_dict = load(config_path)
+    all_required_data, config_dict = load(config)
     settings = all_required_data.settings
     pin_sequence = all_required_data.pin_sequence
 
@@ -973,9 +1073,10 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         for p, o in pins2odors.items():
             print(f' {p}: {format_odor(o)}')
 
-    # TODO thread a command line arg through for this one probably
-    # (have default w/ no arg passed to pause)
-    if pause_for_odor_connecting:
+    if pause_before_start:
+        # TODO or maybe somehow have this default to True if a generator is
+        # being used (especially if i don't add some way to have that re-use
+        # pins, or if i do and it's disabled)
         # TODO maybe warn if no pins2odors, in this case
         input('Press Enter once the odors are connected')
 
@@ -1045,15 +1146,27 @@ def run(config_path, port='/dev/ttyACM0', fqbn=None, do_upload=False,
                     print(line)
 
 
-def main(config_path, hardware_config=None, **kwargs):
-    if in_docker and config_path is not None:
+def main(config, hardware_config=None, _skip_config_preprocess_check=False,
+    **kwargs):
+    """
+    config (str|dict|None)
+    """
+
+    if in_docker and config is not None:
         # TODO reword to be inclusive of directory case?
         raise ValueError('passing filenames to docker currently not supported. '
             'instead, redirect stdin from that file. see README for examples.'
         )
 
-    # TODO TODO if i'm going to allow config_path to be either a list of files
-    # or a directory with config files, make type consistent (make `config_path`
+    if config is None:
+        warnings.warn('setting _skip_config_preprocess_check=True as '
+            'check_need_to_preprocess_config currently does not support '
+            'case where config is read from stdin.'
+        )
+        _skip_config_preprocess_check = True
+
+    # TODO TODO if i'm going to allow config to be either a list of files
+    # or a directory with config files, make type consistent (make `config`
     # a list in nargs=1 case)? + don't check for need to preprocess if input is
     # a list (only support terminal config files in that case)
     # TODO maybe do support a sequence of config files though (also require to
@@ -1063,14 +1176,21 @@ def main(config_path, hardware_config=None, **kwargs):
     # TODO add CLI flag to prevent this from saving anything (for testing)
     # (maybe have the flag also just print the YAML(s) the generator creates
     # then?)
-    config_path = check_need_to_preprocess_config(config_path,
-        hardware_config=hardware_config
-    )
+    if not _skip_config_preprocess_check:
+        # TODO TODO TODO fix so config==None (->stdin input) (used in docker
+        # case) works with this too.
+        config = check_need_to_preprocess_config(config,
+            hardware_config=hardware_config
+        )
 
-    if not isdir(config_path):
-        run(config_path, **kwargs)
-    else:
-        config_files = glob.glob(join(config_path, '*'))
+    
+    if config is None or type(config) is dict or (
+        type(config) is str and isfile(config)):
+
+        run(config, **kwargs)
+
+    elif type(config) is str and isdir(config):
+        config_files = glob.glob(join(config, '*'))
 
         # We expect each config file to follow this naming convention:
         # <x>_<n>.[yaml/json], where <x> can be anything (including containing
@@ -1083,9 +1203,9 @@ def main(config_path, hardware_config=None, **kwargs):
                 n = int(num_part)
                 order_nums.append(n)
             except ValueError:
-                raise ValueError(f'{config_path} had at least one file ({f}) '
-                    'that did not have a number right before the extension, '
-                    'to indicate order. exiting.'
+                raise ValueError(f'{config} had at least one file ({f}) that '
+                    'did not have a number right before the extension, to '
+                    'indicate order. exiting.'
                 )
         config_files = [f for _, f in sorted(zip(order_nums, config_files),
             key=lambda x: x[0]
@@ -1108,22 +1228,38 @@ def main(config_path, hardware_config=None, **kwargs):
             if first_run:
                 first_run = False
 
+    else:
+        # TODO TODO does this break docker stdin based config specification? fix
+        # if so.
+        raise ValueError(f'config type {type(config)} not recognized. must be '
+            'str path to file/directory, dict, or None to use stdin.'
+        )
 
-def main_cli():
-    # TODO try to refactor to inherit / share (at least some?) command line
-    # arguments with upload.py ?
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-u', '--upload', action='store_true', default=False,
-        help='also uploads Arduino code before running'
-    )
+
+# TODO maybe move both of these argparse fns to cli_entry_points.py.
+# one reason not to would be if i wanted to "from cli_entry_points import *"
+# in __init__.py (need a line for each entrypoint for setup.py entry points to
+# work)
+def argparse_arduino_id_args(parser=None):
+    """Returns argparse.ArgumentParser with --port and --fqbn args.
+
+    `main_cli`, `valve_test_cli`, and `upload_cli` currently use these arguments
+    to specify which arduino should be communicated with. --fqbn should only be
+    needed for uploading to new types of boards?
+
+    If parser is passed in, arguments will be added to that parser. Otherwise,
+    a new parser is made first.
+    """
+    if parser is None:
+        parser = argparse.ArgumentParser()
+
     # TODO just detect? or still have this as an option? maybe have on default,
     # and detect by default? (might not be very easy to detect with docker,
     # at least not without using privileged mode as opposed to just passing one
     # specific port... https://stackoverflow.com/questions/24225647 )
     # maybe just use privileged though?
     parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
-        help='port the Arduino is connected to. '
-        'For uploading and communication.'
+        help='port the Arduino is connected to'
     )
     parser.add_argument('-f', '--fqbn', action='store', default=None,
         help='Fully Qualified Board Name, e.g.: arduino:avr:uno. corresponds to'
@@ -1131,50 +1267,43 @@ def main_cli():
         'boards. your connected board should be detected without needing to '
         'pass this.'
     )
+    return parser
+
+
+def argparse_run_args(parser=None):
+    """Returns argparse.ArgumentParser with args shared by [main/valve_test]_cli
+
+    If parser is passed in, arguments will be added to that parser. Otherwise,
+    a new parser is made first.
+    """
+    if parser is None:
+        parser = argparse.ArgumentParser()
+
+    parser.add_argument('-u', '--upload', action='store_true', default=False,
+        help='also uploads Arduino code before running'
+    )
+    argparse_arduino_id_args(parser)
+    # TODO TODO uncomment if i restore upload.version_str to a working state
+    '''
     parser.add_argument('-a', '--allow-version-mismatch', action='store_true',
         default=False, help='unless passed, git hash of arduino code will be '
         'checked against git hash of python code, and it will not let you '
         'proceed unless they match. re-upload arduino code with clean '
         '"git status" to fix mismatch without this flag.'
     )
-    parser.add_argument('-t', '--try-parse', action='store_true', default=False,
-        help='exit after attempting to parse config. no need for a connected '
-        'Arduino.'
-    )
-    parser.add_argument('-i', '--ignore-ack', action='store_true',
-        default=False, help='ignores acknowledgement message #s arduino sends. '
-        'makes viewing all debug prints easier, as no worry they will interfere'
-        ' with receipt of message number.'
-    )
+    '''
     # TODO document OLFACTOMETER_DEFAULT_HARDWARE, and interactions with the
     # same keys already present in some YAML
-    # TODO maybe use defs of these env vars from util rather than retyping here
     parser.add_argument('-r', '--hardware', action='store', default=None,
         help='[path to / prefix of] config specifying available valve pins and'
         'other important pins for a particular physical olfactometer. config '
-        'must be under OLFACTOMETER_HARDWARE_DIR to refer by prefix. see also '
-        'OLFACTOMETER_DEFAULT_HARDWARE.'
+        f'must be under {hardware_dir_envvar} to refer by prefix. see also '
+        f'{default_hardware_envvar}.'
+    )
+    parser.add_argument('-y', '--no-wait', action='store_true', default=False,
+        help='do not wait for user to press <Enter> before starting'
     )
     parser.add_argument('-v', '--verbose', action='store_true', default=False)
-    parser.add_argument('config_path', type=str, nargs='?', default=None,
-        help='.json/.yaml file containing all required data. see `load` '
-        'function. reads config from stdin if not passed.'
-    )
-    args = parser.parse_args()
 
-    do_upload = args.upload
-    port = args.port
-    fqbn = args.fqbn
-    allow_version_mismatch = args.allow_version_mismatch
-    try_parse = args.try_parse
-    ignore_ack = args.ignore_ack
-    hardware_config = args.hardware
-    verbose = args.verbose
-    config_path = args.config_path
+    return parser
 
-    main(config_path, port=port, fqbn=fqbn, do_upload=do_upload,
-        allow_version_mismatch=allow_version_mismatch,
-        ignore_ack=ignore_ack, try_parse=try_parse,
-        hardware_config=hardware_config, verbose=verbose
-    )
-    

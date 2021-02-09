@@ -273,6 +273,8 @@ def make_config_dict(generator_config_yaml_dict):
             p1 = vials2pins[o1]
             p2 = vials2pins[o2]
 
+            # TODO maybe also use common.add_balance_pins here?
+
             # Converting to a set first because if p1 == p2 (should only be
             # relevant in the (0,0) case when all odors are on the same
             # manifold, and thus there is only one shared solvent vial), we just
