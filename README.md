@@ -154,7 +154,9 @@ pip install .
    The above works for Windows 10. For Windows 7, you will need to select
    "Edit the system environment variables" from the search under the Windows key.
    Then the relevant variable will be "Path" under the "System variables" section.
-   You will need to add (`;` separated) paths manually to this string.
+   You will need to add (`;` separated) paths manually to this string. If you
+   have a "Path" / "PATH" in the user specific section, you should use that
+   rather than modify the system variable.
 
 6. To finish setting up `arduino-cli`:
 
@@ -201,6 +203,9 @@ pip install .
     
     ...so that interactive output when running stimulus programs is not delayed.
 
+    Note that some of my attempts to install this on Windows have not been able
+    to get `python` to work inside Git bash.
+
 </details>
 
 
@@ -217,6 +222,37 @@ arduino-cli board list
 ```
 ...and note the value for the `Port` column in the row where `Board Name` is correct.
 You can do the same via the Arduino GUI if you have it installed.
+
+
+#### Testing valves
+```
+olf-test-valves
+```
+
+See `olf-test-valves -h` for command line options.
+
+
+#### Updating
+
+```
+cd <where-you-cloned-olfactometer>
+git pull
+# (activate relevant virtual environment, if you used one)
+pip uninstall olfactometer -y
+pip install .
+```
+
+
+### Environment variables (optional)
+
+You may set `OLFACTOMETER_DEFAULT_HARDWARE` to a directory that contains YAML
+config files (`.yaml` suffix), and then use `OLFACTOMETER_DEFAULT_HARDWARE` to
+control which hardware is used by default. These options are only relevant for
+either config files that have a `generator: <generator-name>` line or when using
+`olf-test-valves`.
+
+If you are using Windows, see the Windows installation instructions above for
+steps to set environment variables.
 
 
 ### Building Docker image
