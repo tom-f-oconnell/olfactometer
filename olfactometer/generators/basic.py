@@ -80,7 +80,7 @@ def make_config_dict(generator_config_yaml_dict):
 
     - Used directly in this function:
       - 'odors'
-      - 'randomize_presentation_order'
+      - 'randomize_presentation_order' (optional, defaults to True)
       - 'n_repeats' (optional, defaults to 1)
 
     """
@@ -110,11 +110,19 @@ def make_config_dict(generator_config_yaml_dict):
     # don't want it to
     pins2odors = {p: o for p, o in zip(odor_pins, odors)}
 
-    # TODO maybe err w/ useful message if True used instead of true, and if YAML
-    # parser cares (and if i'm remembering the typical behavior correctly...)
-    # (& same w/ False / false)
-    randomize_presentation_order = data['randomize_presentation_order']
-    assert randomize_presentation_order in (True, False)
+    randomize_presentation_order_key = 'randomize_presentation_order'
+    if randomize_presentation_order_key in data:
+        randomize_presentation_order = data[randomize_presentation_order_key]
+        assert randomize_presentation_order in (True, False)
+    else:
+        if len(odors) > 1:
+            warnings.warn(f'defaulting to {randomize_presentation_order_key}'
+                '=True, since not specified in config'
+            )
+            randomize_presentation_order = True
+        else:
+            assert len(odors) == 1
+            randomize_presentation_order = False
 
     n_repeats_key = 'n_repeats'
     if n_repeats_key in data:
@@ -122,9 +130,10 @@ def make_config_dict(generator_config_yaml_dict):
         # TODO TODO maybe rename randomize_presentation_order and/or add another
         # possible value and/or add another flag for controlling whether
         # presentations of a particular odor should be kept together
-        warnings.warn('current implementation only randomizes across odors, '
-            'keeping presentations of any given odor together'
-        )
+        if randomize_presentation_order:
+            warnings.warn('current implementation only randomizes across odors,'
+                ' keeping presentations of any given odor together'
+            )
     else:
         n_repeats = 1
 

@@ -13,6 +13,7 @@ from datetime import datetime
 import glob
 import json
 import argparse
+from pprint import pprint
 
 import serial
 # TODO try to find a way of accessing this type without any prefix '_'s
@@ -106,7 +107,7 @@ def load_hardware_config(hardware_config=None, required=False):
         or prefix of one of the YAML files under `hardware_dir_envvar`.
         If `None`, will try `hardware_dir_envvar` and `default_hardware_envvar`.
 
-    required (optional bool): (default=`False`) if `True`, will raise IOError,
+    required (optional bool): (default=`False`) if `True`, will raise `IOError`,
         rather than returning `None`, if no hardware config is found.
 
     Raises `IOError` if some required file / directory is not found.
@@ -318,6 +319,22 @@ def check_need_to_preprocess_config(config, hardware_config=None):
     # each should be written to their own YAML file.
     generated_config = generator_fn(generator_yaml_dict)
 
+    save_generator_output = generator_yaml_dict.get(
+        'save_generator_output', True
+    )
+    if not save_generator_output:
+        if type(generated_config) is dict:
+            # TODO maybe a less jargony message here?
+            warnings.warn("not saving generator output (because "
+                "'save_generator_output: False' in config)!"
+            )
+            return generated_config
+        else:
+            raise ValueError("save_generator_output must be True (the default) "
+                'in case where generator produces a sequence of configuration '
+                'files'
+            )
+
     # TODO probably want to save the config + version of the code in the
     # case when a generator isn't used regardless (or at least have the
     # option to do so...) (not sure i do want this...)
@@ -448,7 +465,9 @@ def load(config=None):
     config (str|dict|None): If `str`, path to JSON or YAML file, which
         must end in .json or .yaml. If `None`, reads from `sys.stdin`.
 
-    Returns an `olf_pb2.AllRequiredData` object.
+    Returns an `olf_pb2.AllRequiredData` object and a `dict` that contains all
+    of the loaded config data, including fields beyond those that affect
+    contents of the `AllRequiredData` object.
     """
     # TODO any way to pass stdin back to interactive input, after (EOF?)?
     # (for interactive stuff during trial, like pausing...) (if not, maybe
@@ -985,8 +1004,23 @@ def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     # TODO especially if i print the YAML name before each in a sequence (when
     # running a sequence of YAML files), also print it here
     if verbose or try_parse:
-        print('Config data:')
+        print('Config data used by microcontroller:')
         print(all_required_data)
+        # Stuff that would be behind the 'settings' / 'pin_sequence' keys should
+        # be printed in the line above.
+        extra_config = {k: v for k, v in config_dict.items()
+            if k not in ('settings', 'pin_sequence')
+        }
+        # TODO maybe print this circa check_need_to_preprocess... call, to also
+        # print 'generator:', and other keys that might not make it to generator
+        # output? or i guess it's fine here as long as most keys (just
+        # 'generator' and maybe a couple other specific exceptions) are just
+        # transferred directly to generator output (by default)....
+        # (or print the stuff that doesn't make it to this, in that case, and if
+        # verbose / try_parse?)
+        if len(extra_config) > 0:
+            print('Additional config data:')
+            pprint(extra_config)
 
     warn = True
     validate(all_required_data, warn=warn)
@@ -1078,6 +1112,8 @@ def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         # being used (especially if i don't add some way to have that re-use
         # pins, or if i do and it's disabled)
         # TODO maybe warn if no pins2odors, in this case
+        # TODO maybe prompt user to connect arduino if after Enter is pressed
+        # here, the serial device would fail to be found in the next line
         input('Press Enter once the odors are connected')
 
     # TODO TODO define some class that has its own context manager that maybe
