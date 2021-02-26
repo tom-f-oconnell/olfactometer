@@ -2,16 +2,8 @@
 
 from setuptools import setup, find_packages
 
-# TODO TODO add note to Development install instructions saying that editable
-# install won't completely work right (and it won't, right? cause scripts i
-# think?)
-
 setup(
     name='olfactometer',
-    # TODO maybe just replace w/ find_package() (to not have to change
-    # olfacometer twice if package name changes, and since arbitrary code
-    # executtion in setup.py is not supported for all build systems)?
-    #packages=['olfactometer'],
     packages=find_packages(),
     install_requires=[
         # For nanopb
@@ -21,9 +13,12 @@ setup(
         'pyserial',
         'pyyaml',
 
-        # TODO actually use this one... (and does it require git installed in
-        # advance?  if so, specify in windows part of README and include in
-        # Dockerfile)
+        # TODO does it require git installed in advance? if so, specify in
+        # windows part of README and include in Dockerfile
+        # TODO maybe delete this if i can't resolve the olf-version-str issue
+        # (possible that git version will never really be useable as i'm
+        # deploying it now, or at least with some of the ways i'd like to
+        # support)
         'gitpython',
 
         # See note in package_data section below about trying to install
@@ -45,6 +40,11 @@ setup(
         'pytest',
         'inflection'
     ],
+    # TODO does editable install work with entrypoints though? probably also no?
+    # (re: note in 'Development installation' instructions about '-e' not
+    # working).  i know it didn't exactly work when i used to install command
+    # line scripts via the `scripts` kwarg rather than the `entry_points` kwarg
+    # i'm currently using.
     entry_points={
         'console_scripts': [
             'olf=olfactometer:main_cli',

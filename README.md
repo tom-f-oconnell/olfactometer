@@ -126,6 +126,8 @@ After you have installed the necessary dependencies:
 # (make and activate a virtual environment here, if you would like)
 pip install .
 ```
+Note that using the `-e` flag for the `pip install` command above will likely
+NOT work, at least as far as setting up the command line scripts.
 
 ##### Windows
 <details><summary>Windows specific installation instructions (click to expand)</summary>
