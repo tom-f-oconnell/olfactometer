@@ -12,6 +12,7 @@ import tempfile
 from datetime import datetime
 import glob
 import json
+import math
 import argparse
 from pprint import pprint
 
@@ -20,6 +21,7 @@ import serial
 from google.protobuf.internal.encoder import _VarintBytes
 from google.protobuf import json_format, pyext
 import yaml
+import alicat
 
 from olfactometer import upload
 from olfactometer.generators import common, basic, pair_concentration_grid
@@ -960,6 +962,49 @@ def print_odor(odor_dict):
     print(format_odor(odor_dict))
 
 
+def seconds_per_trial(all_required_data):
+    """Returns float seconds per trial given `olf_pb2.AllRequiredData` object.
+
+    Raises `ValueError` if timing information is not specified (e.g. if
+    follow_hardware_timing is specified instead).
+    """
+    settings = all_required_data.settings
+    if settings.WhichOneof('control') == 'follow_hardware_timing':
+        raise ValueError('follow_hardware_timing case not supported')
+
+    timing = settings.timing
+    return (timing.pre_pulse_us + timing.pulse_us + timing.post_pulse_us) / 1e6
+
+
+def number_of_trials(all_required_data):
+    """Returns number of trials given `olf_pb2.AllRequiredData` object.
+    """
+    return len(all_required_data.pin_sequence.pin_groups)
+
+
+def curr_trial_index(start_time_s, config_or_trial_dur, n_trials=None):
+    """Returns index of current trial via start time and config.
+
+    If current time is past end of last trial, `None` will be returned.
+
+    Can also take float duration of a single trial in seconds in place of
+    config. If passing config, should be of type `olf_pb2.AllRequiredData`.
+    """
+    try:
+        one_trial_s = float(config_or_trial_dur)
+        assert n_trials is not None, ('must pass n_trials if passing float '
+            'seconds per trial, rather than full config'
+        )
+    except TypeError:
+        one_trial_s = seconds_per_trial(config_or_trial_dur)
+        n_trials = number_of_trials(config_or_trial_dur)
+
+    since_start_s = time.time() - start_time_s
+    trial_idx = math.floor(since_start_s / one_trial_s)
+
+    return trial_idx if trial_idx < n_trials else None
+
+
 # TODO add fn that takes a pin_sequence (or pinlist_at_each_trial equivalent),
 # and pins2odors, and prints it all nicely
 
@@ -1107,6 +1152,10 @@ def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         for p, o in pins2odors.items():
             print(f' {p}: {format_odor(o)}')
 
+    n_trials = number_of_trials(all_required_data)
+    if not settings.follow_hardware_timing:
+        one_trial_s = seconds_per_trial(all_required_data)
+
     if pause_before_start:
         # TODO or maybe somehow have this default to True if a generator is
         # being used (especially if i don't add some way to have that re-use
@@ -1122,7 +1171,7 @@ def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
     # other python code)
     with serial.Serial(port, baud_rate, timeout=0.1) as ser:
         print('Connected')
-        connect_time = time.time()
+        connect_time_s = time.time()
 
         while True:
             version_line = ser.readline()
@@ -1130,7 +1179,7 @@ def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
                 arduino_version_str = version_line.decode().strip()
                 break
 
-            if time.time() - connect_time > timeout_s:
+            if time.time() - connect_time_s > timeout_s:
                 raise RuntimeError('arduino did not respond within '
                     f'{timeout_s:.1f} seconds. have you uploaded the code? '
                     're-run with -u if not.'
@@ -1159,6 +1208,9 @@ def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
 
         write_message(ser, pin_sequence, ignore_ack=ignore_ack, verbose=verbose)
 
+        # TODO maybe use:
+        # if settings.WhichOneof('control') == 'follow_hardware_timing':
+        # here? seems to work though...
         if settings.follow_hardware_timing:
             print('Ready (waiting for hardware triggers)')
         else:
@@ -1167,13 +1219,47 @@ def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
         # TODO err in not settings.follow_hardware_timing case, if enough time
         # has passed before we get first trial status print?
 
+        start_time_s = time.time()
+
+        # TODO delete / verbose
+        rl_times = []
+        #
+        last_trial_idx = None
+
         while True:
+            if not settings.follow_hardware_timing:
+                # Couldn't parse output of readline() below in
+                # follow_hardware_timing case, because those prints come at [I
+                # believe] the odor pulse offsets there, so we would at least
+                # need to hardcode some delays or something.
+                trial_idx = curr_trial_index(start_time_s, one_trial_s,
+                    n_trials
+                )
+                # TODO delete
+                if trial_idx != last_trial_idx:
+                    print('trial_idx:', trial_idx)
+                    last_trial_idx = trial_idx
+                #
+
+            # TODO delete / verbose
+            #print('reading line...', end='')
+            rl_t0 = time.time()
+            #
+
             line = ser.readline()
+
+            # TODO delete / verbose
+            rl_t1 = time.time()
+            rl_s = rl_t1 - rl_t0
+            rl_times.append(rl_s)
+            #print(f'done ({rl_s:.3f}s)')
+            #
             if len(line) > 0:
                 try:
                     line = line.decode()
                     print(line, end='')
                     if line.strip() == 'Finished':
+                        finish_time_s = time.time()
                         break
                 # Docs say decoding errors will be a ValueError or a subclass.
                 # UnicodeDecodeError, for instance, is a subclass.
@@ -1181,12 +1267,44 @@ def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
                     print(e)
                     print(line)
 
+        duration_s = finish_time_s - start_time_s
+
+        # TODO delete / verbose
+        max_rl_s = max(rl_times)
+        # (currently ~0.10[1-3]s. most are right on 0.100s, but maybe slightly
+        # longer if actually reading data?.)
+        #print(f'max_rl_s: {max_rl_s:.3f}')
+        #
+
+        print('trial index after finishing (should be None):',
+            curr_trial_index(start_time_s, one_trial_s, n_trials)
+        )
+
+        # If we are just triggering off of input pulses, as in
+        # follow_hardware_timing case, we don't know how long trials will be.
+        if not settings.follow_hardware_timing:
+            # TODO warn / err if these differ by more than some atol/rtol
+            expected_duration_s = n_trials * one_trial_s
+            print('duration_s:', duration_s)
+            print('expected_duration_s:', expected_duration_s)
+            import ipdb; ipdb.set_trace()
+
 
 def main(config, hardware_config=None, _skip_config_preprocess_check=False,
     **kwargs):
     """
     config (str|dict|None)
     """
+
+    # TODO TODO TODO add arg for excluding pins (e.g. for running basic.py
+    # configured w/ tom_olfactometer_configs/one_odor.yaml after already hooking
+    # up odors from the same generator configured w/
+    # ""/glomeruli_diagnostics.yaml). accept either yaml file w/ pins2odors
+    # (or just pins in pin_sequence?) or just a comma separated list of pins on
+    # the command line. thread through to command line interfaces.
+    # and should i have an option for just automatically finding the last
+    # generated thing and excluding the pins in that? might want to set up an
+    # env var for output directory first...
 
     if in_docker and config is not None:
         # TODO reword to be inclusive of directory case?

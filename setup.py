@@ -28,6 +28,8 @@ setup(
         # (test both with and without docker)
         'nanopb',
 
+        'alicat',
+
         # TODO TODO delete after debugging
         'ipdb'
     ],
