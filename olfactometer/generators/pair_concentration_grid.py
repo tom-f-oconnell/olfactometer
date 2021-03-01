@@ -17,7 +17,7 @@ available_valve_pins: [2, 3, 4]
 # some other parameters controlling randomization.
 #randomize_presentation_order: False
 
-n_trials: 3
+n_repeats: 3
 
 randomize_pair_order: True
 randomize_first_ramped_odor: True
@@ -87,7 +87,7 @@ def make_config_dict(generator_config_yaml_dict):
     n_concentrations = len(global_log10_concentrations)
 
     # Currently only supporting the case where the trials are all consecutive.
-    n_trials = data['n_trials']
+    n_repeats = data['n_repeats']
 
     odor_pairs = data['odor_pairs']
 
@@ -242,7 +242,7 @@ def make_config_dict(generator_config_yaml_dict):
 
         # The '+ 2 * n_concentrations' is for the single-odor case (where the
         # other is zero concentration, and instead the solvent valve is
-        # switched).  This is number of presentations (multplied by n_trials)
+        # switched).  This is number of presentations (multplied by n_repeats)
         n_unique_conc_pairs = n_concentrations**2 + 2 * n_concentrations + 1
         assert len(pair_conc_index_order) == n_unique_conc_pairs
 
@@ -299,14 +299,14 @@ def make_config_dict(generator_config_yaml_dict):
                 # there is a single balance pin, but it doesn't support two.
                 pins.extend([group1_balance_pin, group2_balance_pin])
 
-            pinlist_at_each_trial.extend([pins] * n_trials)
+            pinlist_at_each_trial.extend([pins] * n_repeats)
 
             # Again, just used for troubleshooting / display in here. pins above
             # all that matter for outputs.
             curr_odors = [o1, o2] if len(pins) > 1 else [o1]
-            odorlist_at_each_trial.extend([curr_odors] * n_trials)
+            odorlist_at_each_trial.extend([curr_odors] * n_repeats)
 
-        expected_total_n_trials = n_trials * n_unique_conc_pairs
+        expected_total_n_trials = n_repeats * n_unique_conc_pairs
         assert len(pinlist_at_each_trial) == expected_total_n_trials
         del expected_total_n_trials
 

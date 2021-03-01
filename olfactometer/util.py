@@ -15,7 +15,6 @@ import json
 import math
 import argparse
 from pprint import pprint
-# TODO TODO use to clean up any opened alicat flow controllers
 import atexit
 
 import serial
