@@ -117,3 +117,10 @@
 - make some canonical path (env var modifiable) for files describing
   configuration of each olfactometer (~each rig, if 1:1), assuming hardware is
   allowed to vary (which, let's be real, it will)
+
+- compile a separate docker image that just has the firmware all precompiled,
+  to not need the size of the arduino toolchain(s)
+  - and add entrypoint in current one so different toolchains can be installed,
+    via the arduino-cli stuff? just provide access to arduino-cli?
+    (might want persistent storage for some of that stuff though...)
+

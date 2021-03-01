@@ -42,11 +42,6 @@ setup(
         'pytest',
         'inflection'
     ],
-    # TODO does editable install work with entrypoints though? probably also no?
-    # (re: note in 'Development installation' instructions about '-e' not
-    # working).  i know it didn't exactly work when i used to install command
-    # line scripts via the `scripts` kwarg rather than the `entry_points` kwarg
-    # i'm currently using.
     entry_points={
         'console_scripts': [
             'olf=olfactometer:main_cli',

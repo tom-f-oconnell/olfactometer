@@ -161,7 +161,7 @@ def get_fqbn(port):
             core = parts[-1].strip()
 
     if fqbn is None:
-        raise RuntimeError(f'board at port {port} not found')
+        raise IOError(f'board at port {port} not found')
 
     # Han got this with a arduino:avr:nano:cpu=atmega328 on /dev/ttyUSB0
     if fqbn == 'Unknown':
@@ -223,6 +223,10 @@ def is_repo_current(repo, warn=True):
 no_clean_hash_str = 'no_clean_git_version'
 no_version_available_str = 'no_version_available'
 # TODO might make more sense to move to util
+# TODO TODO TODO maybe i should have another version string which is just a hash
+# of all of the code (maybe processed to exclude stuff like comments before
+# hashing)? might be much easier to get to work w/ pip installed deployments
+# than anything involving git...
 def version_str(update_check=False, update_on_prompt=False):
     """Returns either git hash of this repo or a str indicating none was usable.
     """
@@ -354,15 +358,23 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
             )
 
     if fqbn is None:
-        # not currently raising the prior IOError if this is reached in
-        # dry_run or show_properties case...
-        fqbn = get_fqbn(port)
+        try:
+            fqbn = get_fqbn(port)
+        except IOError:
+            if dry_run:
+                raise IOError('if using -d/--dry-run and no single compatible '
+                    'microcontroller is connected, you must pass -f/--fqbn. '
+                    'no microcontroller found!'
+                )
+            else:
+                raise
 
     cmd = (f'arduino-cli compile -b {fqbn} {sketch_dir} '
         f'--libraries {arduino_lib_dir} '
         f'--build-path {build_path} --build-cache-path {build_cache_path}'
     )
     if show_properties:
+        # TODO --build-properties is deprecated. this still good?
         cmd += ' --show-properties'
 
     extra_flag_list = []
@@ -382,6 +394,8 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
         # https://github.com/arduino/arduino-cli/issues/210 warns that this can
         # / will override similar flags specified in boards.txt, though I'm not
         # sure that will be an issue we encounter.
+        # TODO try to update to (a series of?) --build-property calls, as
+        # deprecation warning for --build-properties says
         cmd += f' --build-properties build.extra_flags="{extra_flags}"'
 
     if verbose:
