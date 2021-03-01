@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import warnings
 import sys
+import json
 
 import olfactometer
 from olfactometer import util
@@ -144,40 +145,101 @@ def make_arduino_sketch_and_libraries(sketch_dir, arduino_lib_dir,
             copy_or_link(src, dst)
 
 
-def get_fqbn(port):
-    # This will raise error if command fails.
-    lines = check_output(['arduino-cli', 'board', 'list']).decode().splitlines()
+def get_port_and_fqbn(port=None, fqbn=None, will_upload=True):
+    """
+    Returns (port, fqbn). Any passed inputs will be returned unchanged.
 
-    fqbn = None
-    for line in lines[1:]:
-        line = line.strip()
-        if len(line) == 0:
+    If only one of the inputs is passed, only boards matching that input will
+    be considered.
+    """
+    # Don't want any of the IOErrors in this case, because only using this
+    # function to get the fqbn here. No need to actually communicate with the
+    # board.
+    if not will_upload and fqbn is not None:
+        # TODO maybe still validate the fqbn here though? (could do via output
+        # of 'arduino-cli board listall', if appropriate core is installed)
+        return port, fqbn
+
+    # This is because arduino-cli hangs for a while (maybe indefinitely?)
+    # if it does not exist.
+    # Checking for Windows because it seems it's maybe not a regular file on
+    # Windows 7, at least from Git bash. It does work in Git bash though,
+    # despite the fact that the `exists` check would fail.
+    if port is not None:
+        if not exists(port) and not util.in_windows():
+            raise IOError(f'port {port} does not exist. '
+                'is the Arduino connected?'
+            )
+
+        elif fqbn is not None:
+            # TODO may still want to check it's in the list below in this case,
+            # at least to handle the error message here?
+            return port, fqbn
+
+    board_list_cmd = 'arduino-cli board list --format json'
+    # This will raise error if command fails.
+    boards = json.loads(check_output(board_list_cmd.split()).decode())
+
+    if port is None and fqbn is None:
+        match_str = ''
+    elif port is not None:
+        match_str = f' matching port={port}'
+    elif fqbn is not None:
+        match_str = f' matching fqbn={fqbn}'
+    else:
+        match_str = f' matching port={port} and fqbn={fqbn}'
+
+    found_fqbn = None
+    found_port = None
+    for b in boards:
+        # TODO do i want to restrict to 'protocol': 'serial'? not sure what else
+        # there is...
+        try:
+            xs = b['boards']
+        except KeyError:
+            # 'boards' only defined for stuff that is actually real (that has a
+            # FQBN?) it seems. e.g. /dev/ttyS0 on my 18.04 machine doesn't have
+            # this.t
             continue
 
-        parts = line.split()
-        curr_port = parts[0]
-        if curr_port == port:
-            fqbn = parts[-2].strip()
-            core = parts[-1].strip()
+        assert len(xs) == 1
+        x = xs[0]
+        curr_fqbn = x['FQBN']
+        if fqbn is not None and curr_fqbn != fqbn:
+            # TODO maybe log here w/ reason for skipping
+            continue
 
-    if fqbn is None:
-        raise IOError(f'board at port {port} not found')
+        curr_port = b['address']
+        if port is not None and curr_port != port:
+            # TODO maybe log here w/ reason for skipping
+            continue
 
-    # Han got this with a arduino:avr:nano:cpu=atmega328 on /dev/ttyUSB0
-    if fqbn == 'Unknown':
-        raise RuntimeError('arduino-cli is not detecting FQBN for board at '
-            f'port {port}. lookup what arduino-cli FQBN should be for your '
-            'board, and pass with -f'
-        )
-    assert ':' in fqbn, 'fqbn seemingly not parsed correctly'
+        if found_port is not None:
+            # TODO TODO test this case
+            raise IOError(f'found multiple boards{match_str}. ambiguous! '
+                'try explicitly specifying -p/-f.'
+            )
 
-    print(f'Detected an {fqbn} on port {port}')
+        found_fqbn = curr_fqbn
+        found_port = curr_port
+
+    if found_port is None:
+        err_msg = f'no boards found{match_str}'
+
+        if not will_upload:
+            err_msg += ('. you may instead specify -f/--fqbn since not '
+                'uploading.'
+            )
+
+        raise IOError(err_msg)
+
+    print(f'Detected board {found_fqbn} on port {found_port}')
 
     # TODO maybe also parse list of cores and check core of board is supported
     # (mostly so i could also consider installing the missing core at runtime,
     # right before upload)
 
-    return fqbn
+    return found_port, found_fqbn
 
 
 def yes_or_no(question):
@@ -314,7 +376,7 @@ def version_str(update_check=False, update_on_prompt=False):
 
 
 # TODO maybe thread fqbn through args so arduino-cli lookup not always needed
-def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
+def upload(sketch_dir, arduino_lib_dir, fqbn=None, port=None,
     build_root=None, dry_run=False, show_properties=False,
     arduino_debug_prints=False, verbose=False):
 
@@ -342,32 +404,9 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
     if exists(build_cache_path):
         shutil.rmtree(build_cache_path)
 
-    if not (dry_run or show_properties):
-        # TODO i managed to get the same "...Device or resource busy
-        # ioctl("TIOCMGET"): Inappropriate ioctl for device" error when i just
-        # plugged the arduino in here...
-
-        # This is because arduino-cli hangs for a while (maybe indefinitely?)
-        # if it does not exist.
-        # Checking for Windows because it seems it's maybe not a regular file on
-        # Windows 7, at least from Git bash. It does work in Git bash though,
-        # despite the fact that the `exists` check would fail.
-        if not exists(port) and not util.in_windows():
-            raise IOError(f'port {port} does not exist. '
-                'is the Arduino connected?'
-            )
-
-    if fqbn is None:
-        try:
-            fqbn = get_fqbn(port)
-        except IOError:
-            if dry_run:
-                raise IOError('if using -d/--dry-run and no single compatible '
-                    'microcontroller is connected, you must pass -f/--fqbn. '
-                    'no microcontroller found!'
-                )
-            else:
-                raise
+    port, fqbn = get_port_and_fqbn(port=port, fqbn=fqbn,
+        will_upload=not (dry_run or show_properties)
+    )
 
     cmd = (f'arduino-cli compile -b {fqbn} {sketch_dir} '
         f'--libraries {arduino_lib_dir} '
@@ -441,7 +480,7 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port='/dev/ttyACM0',
         raise RuntimeError('compilation or upload failed')
 
 
-def main(port='/dev/ttyACM0', fqbn=None, dry_run=False, show_properties=False,
+def main(port=None, fqbn=None, dry_run=False, show_properties=False,
     arduino_debug_prints=False, build_root=None, use_symlinks=True,
     verbose=False):
 

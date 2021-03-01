@@ -28,6 +28,11 @@ def main():
         print(f)
     print()
 
+    # TODO TODO was arduino:avr:nano:cpu=atmega328 a valid input? it's not
+    # generated in above right? try it manually / figure out how to enumerate
+    # meaningfully distinct CPUs? (re: some troubleshooting w/ Han, when a board
+    # with [i think] this fqbn erred on his /dev/ttyUSB0)
+
     '''
     fqbns = [
         'arduino:avr:mega',

@@ -15,13 +15,23 @@ import json
 import math
 import argparse
 from pprint import pprint
+# TODO TODO use to clean up any opened alicat flow controllers
+import atexit
 
 import serial
+# TODO use to make functions for printing vid/pid (or other unique ids for usb
+# devices), which can be used to reference specific MFCs / arduinos in config
+# (and also for listing ports corresponding to such devices).
+# probably have env vars to set vid/pid (one each?), to not have to type out
+# each time.
+# TODO maybe also use whichever unique USB ID to configure a expected ID, so
+# that if the wrong arduino is connected it can be detected?
+from serial.tools import list_ports
 # TODO try to find a way of accessing this type without any prefix '_'s
 from google.protobuf.internal.encoder import _VarintBytes
 from google.protobuf import json_format, pyext
 import yaml
-import alicat
+from alicat import FlowController
 
 from olfactometer import upload
 from olfactometer.generators import common, basic, pair_concentration_grid
@@ -940,6 +950,24 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
             print(f'Time to msg num ack: {time_to_msgnum_ack:.3f}')
 
 
+# TODO maybe add optional address (both kwargs, but require one, like [i think]
+# in alicat code?)
+def open_alicat_controller(port, _skip_read_check=False):
+    """Opens serial connection to Alicat mass flow controller.
+
+    Also registers atexit function to close connection.
+    """
+    # Raies OSError under some conditions (maybe just via pyserial?)
+    c = FlowController(port=port)
+    atexit.register(c.close)
+    # From some earlier testing, it seemed that first sign of incorrect opening
+    # was often on first read, hence the read here without using the values.
+    if not _skip_read_check:
+        # Will raise OSError if fails.
+        c.get()
+    return c
+
+
 # TODO TODO also support mixtures (separate fn probably)
 # TODO support 'solvent' key for odor? and maybe 'default_solvent' toplevel key
 # (kwarg here?)?
@@ -1019,7 +1047,7 @@ def curr_trial_index(start_time_s, config_or_trial_dur, n_trials=None):
 # of util.py from the cwd, if cwd=~/src/olfactometer) has changes not reflected
 # in the version of the installed `olf` script)
 baud_rate = None
-def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
+def run(config, port=None, fqbn=None, do_upload=False,
     allow_version_mismatch=False, ignore_ack=False, try_parse=False,
     timeout_s=2.0, pause_before_start=True, verbose=False, _first_run=True):
     """Runs a single configuration file on the olfactometer.
@@ -1079,6 +1107,8 @@ def run(config, port='/dev/ttyACM0', fqbn=None, do_upload=False,
 
         # Default is False
         settings.no_ack = True
+
+    port, fqbn = upload.get_port_and_fqbn(port=port, fqbn=fqbn)
 
     # TODO maybe factor all this first_run stuff into its own fn and call before
     # first run() call in sequence case, so the first "Config file: ..." doesn't
@@ -1412,7 +1442,7 @@ def argparse_arduino_id_args(parser=None):
     # at least not without using privileged mode as opposed to just passing one
     # specific port... https://stackoverflow.com/questions/24225647 )
     # maybe just use privileged though?
-    parser.add_argument('-p', '--port', action='store', default='/dev/ttyACM0',
+    parser.add_argument('-p', '--port', action='store', default=None,
         help='port the Arduino is connected to'
     )
     parser.add_argument('-f', '--fqbn', action='store', default=None,
