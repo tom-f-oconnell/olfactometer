@@ -1071,6 +1071,10 @@ def open_alicat_controller(port, save_initial_setpoints=True,
     # was often on first read, hence the read here without (necessarily) using
     # the values later.
     if not _skip_read_check:
+        # TODO TODO TODO why am i all of a sudden getting:
+        # ValueError: could not convert string to float: 'Air' here?
+        # didn't happen in .get in alicat_test.py i think...
+        # i did just switch flow controllers...
         # Will raise OSError if fails.
         data = c.get()
 
@@ -1101,7 +1105,7 @@ def open_alicat_controllers(config_dict, _skip_read_check=False):
     """
     flow_setpoints_sequence = config_dict[flow_setpoints_sequence_key]
 
-    required_ports = set()
+    port_set = set()
     port2flows = dict()
     for trial_setpoints in flow_setpoints_sequence:
         for one_controller_setpoint in trial_setpoints:

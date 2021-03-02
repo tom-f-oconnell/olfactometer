@@ -6,3 +6,4 @@
 .dockerignore
 venv/
 __pycache__/
+*.egg-info/
