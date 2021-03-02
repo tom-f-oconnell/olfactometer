@@ -115,6 +115,10 @@ def make_config_dict(generator_config_yaml_dict):
         group1_balance_pin = data['group1_balance_pin']
         group2_balance_pin = data['group2_balance_pin']
     else:
+        warnings.warn('presenting mixtures with a multiple components getting '
+            'flow from the same manifold might risk the flow not dividing '
+            'evenly between the open valves! be careful.'
+        )
         if 'randomize_pairs_to_manifolds' in data:
             warnings.warn('randomize_pairs_to_manifolds specified in config, '
                 'but olfactometer only has one manifold. ignoring.'

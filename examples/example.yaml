@@ -16,6 +16,8 @@ settings:
     # (post_pulse_us + pre_pulse_us)
     post_pulse_us: 2000000
 
+  # TODO add example + explanation of recording_pin / timing_output_pin / etc
+
 # Example trial structure with 4 trials. If your microcontroller 
 # has pin 13 connected to the builtin LED (as Arduino Unos and 
 # Megas do), running this config will flash that LED once per trial 

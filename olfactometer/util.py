@@ -9,7 +9,7 @@ import subprocess
 import warnings
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 import glob
 import json
 import math
@@ -589,6 +589,10 @@ def validate_port(port):
 # TODO TODO figure out max pulse feature size (micros overflow period, i think,
 # divided by 2 [- 1?]?). check none of  [pre/post_]pulse_us / pulse_us are
 # longer
+# TODO rename 'settings' in the protobuf definition and in all references to be
+# more spefific? in a way, everything in the AllRequiredData object is a
+# setting... and it also might be nice to name the fn that validates
+# AllRequiredData as validate_firmware_settings or something
 def validate_settings(settings, **kwargs):
     """Raises ValueError if invalid settings are detected.
     """
@@ -750,6 +754,96 @@ def validate(msg, warn=True, _first_call=True):
     # msg.DESCRIPTOR instead.
     for _, value in msg.ListFields():
         validate(value, warn=warn, _first_call=False)
+
+
+flow_setpoints_sequence_key = 'flow_setpoints_sequence'
+# TODO later, support some other IDs (maybe some USB unique IDs or something in
+# alicat manufacturer data [which can in theory by queried from devices, though
+# i don't think numat/alicat currently supports this via one of their provided
+# functions)
+required_flow_setpoint_keys = ('port', 'sccm')
+def validate_flow_setpoints_sequence(flow_setpoints_sequence, warn=True):
+    required_key_set = set(required_flow_setpoint_keys)
+
+    all_seen_ports = set()
+    for trial_setpoints in flow_setpoints_sequence:
+        for one_controller_setpoint in trial_setpoints:
+            curr_key_set = set(one_controller_setpoint.keys())
+            if not curr_key_set == required_key_set:
+                missing_keys = required_key_set - curr_key_set
+                raise ValueError(f'missing required keys {missing_keys} for at '
+                    'least one entry in {flow_setpoints_sequence_key} from '
+                    'configuration'
+                )
+
+            port = one_controller_setpoint['port']
+            all_seen_ports.add(port)
+            if type(port) is not str:
+                raise ValueError(f'ports in {flow_setpoints_sequence_key} must '
+                    'be of type str'
+                )
+
+            try:
+                setpoint = float(one_controller_setpoint['sccm'])
+            except ValueError:
+                raise ValueError(f'sccm values in {flow_setpoints_sequence_key}'
+                    ' must be numeric'
+                )
+
+            if setpoint < 0:
+                raise ValueError(f'sccm values in {flow_setpoints_sequence_key}'
+                    ' must be non-negative'
+                )
+
+    # For now, we are going to require that each port that is referenced is
+    # referenced in the list for each trial, for simplicity of downstream code.
+    for trial_setpoints in flow_setpoints_sequence:
+        trial_ports = {x['port'] for x in trial_setpoints}
+        if trial_ports != all_seen_ports:
+            missing = all_seen_ports - trial_ports
+            raise ValueError('each port must be referenced in each element '
+                f'of flow_setpoints_sequence. current trial missing: {missing}'
+            )
+
+    # TODO warn if sum across flow meters at each trial ever changes across
+    # trials
+
+
+def validate_config_dict(config_dict, warn=True):
+    """Raises ValueError if config_dict has some invalid data.
+
+    Doesn't check firmware settings in the `AllRequiredData` object, which is
+    currently handled by `validate`.
+    """
+    # there's other stuff that could be checked here, but just dealing w/ some
+    # of the possible config problems when adding flow controller support for
+    # now
+    if flow_setpoints_sequence_key in config_dict:
+        # TODO test this w/ actual valid input to enable follow_hardware_timing
+        settings = config_dict['settings']
+        if settings.get('follow_hardware_timing', False):
+            # (because we don't know how long the trials will be in this case,
+            # and we don't know when they will happen, so we can't change flow
+            # in advance)
+            raise ValueError('flow setpoints sequence can not be used in '
+                'follow_hardware_timing case'
+            )
+        #
+
+        flow_setpoints_sequence = config_dict[flow_setpoints_sequence_key]
+
+        # should be equal to len(all_required_data.pin_sequence.pin_groups)
+        # which was derived from the data in config_dict
+        pin_groups = config_dict['pin_sequence']['pin_groups']
+
+        f_len = len(flow_setpoints_sequence)
+        p_len = len(pin_groups)
+        if f_len != p_len:
+            raise ValueError(f'len({flow_setpoints_sequence_key}) != len('
+                f'pin_sequence.pin_groups) ({f_len} != {p_len})'
+            )
+
+        validate_flow_setpoints_sequence(flow_setpoints_sequence, warn=warn)
 
 
 def parse_baud_from_sketch():
@@ -951,29 +1045,183 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 
 # TODO maybe add optional address (both kwargs, but require one, like [i think]
 # in alicat code?)
-def open_alicat_controller(port, _skip_read_check=False):
-    """Opens serial connection to Alicat mass flow controller.
+_port2initial_get_output = dict()
+def open_alicat_controller(port, save_initial_setpoints=True,
+    check_gas_is_air=True, _skip_read_check=False):
+    """Returns opened alicat.FlowController for controller on input port.
 
     Also registers atexit function to close connection.
+
+    Unless all kwargs are False, queries the controller to set
+    corresponding entry in `_port2initial_get_output`.
     """
+    if save_initial_setpoints or check_gas_is_air:
+        _skip_read_check = False
+
+    # TODO thread through expected vid/pid or other unique usb identifiers for
+    # controllers / the adapters we are using to interface with them. either in
+    # env vars / hardware config / both. if using vid/pid, i measured
+    # vid=5296 pid=13328 for our startech 4x rs232 adapters (on downstairs 2p
+    # windows 7 machine using my tom-f-oconnell/test/alicat_test.py script).
+
     # Raies OSError under some conditions (maybe just via pyserial?)
     c = FlowController(port=port)
     atexit.register(c.close)
     # From some earlier testing, it seemed that first sign of incorrect opening
-    # was often on first read, hence the read here without using the values.
+    # was often on first read, hence the read here without (necessarily) using
+    # the values later.
     if not _skip_read_check:
         # Will raise OSError if fails.
-        c.get()
+        data = c.get()
+
+        # TODO probably delete this if i add support for MFC->gas config
+        # (via c.set_gas(<str>) in numat/alicat api)
+        if check_gas_is_air:
+            gas = data['gas']
+            if gas != 'Air':
+                raise RuntimeError('gas on MFC at port {port} was configured '
+                    f"to '{gas}', but was expecting 'Air'"
+                )
+
+        # TODO TODO TODO TODO if need be, to minimize loss of precision, check
+        # that device units are configured correctly for how we are planning on
+        # sending setpoints. again, https://github.com/numat/alicat/issues/14
+        # may be relevant.
+
+        _port2initial_get_output[port] = data
+
     return c
 
 
-# TODO TODO also support mixtures (separate fn probably)
-# TODO support 'solvent' key for odor? and maybe 'default_solvent' toplevel key
+# TODO maybe initialize this w/ .get() in this open fn?
+# (currently just used in set_flow_setpoints)
+_port2last_flow_rate = dict()
+def open_alicat_controllers(config_dict, _skip_read_check=False):
+    """Returns a dict of str port -> opened alicat.FlowController
+    """
+    flow_setpoints_sequence = config_dict[flow_setpoints_sequence_key]
+
+    required_ports = set()
+    port2flows = dict()
+    for trial_setpoints in flow_setpoints_sequence:
+        for one_controller_setpoint in trial_setpoints:
+            port = one_controller_setpoint['port']
+            port_set.add(port)
+
+            sccm = one_controller_setpoint['sccm']
+            if port not in port2flows:
+                port2flows[port] = [sccm]
+            else:
+                port2flows[port].append(sccm)
+
+    print('Opening flow controllers:')
+    port2flow_controller = dict()
+    sorted_ports = sorted(list(port_set))
+    for port in sorted_ports:
+        print(f'- {port} ...', end='', flush=True)
+        c = open_alicat_controller(port, _skip_read_check=_skip_read_check)
+        port2flow_controller[port] = c
+        print('done', flush=True)
+
+    # TODO maybe put behind verbose
+    print('[min, max] requested flows (in mL/min) for each flow controller:')
+    for port in sorted_ports:
+        fmin = min(port2flows[port])
+        fmax = max(port2flows[port])
+        print(f'- {port}: [{fmin:.3f}, {fmax:.3f}]')
+
+    # TODO TODO somehow check all flow rates (min/max over course of sequence)
+    # are within device ranges
+    # TODO TODO also check resolution (may need to still have access to a
+    # unparsed str copy of the variable... not sure)
+
+    return port2flow_controller
+
+
+# TODO TODO maybe store data for how long each change of a setpoint took, to
+# know that they all completed in a reasonable amount of time?
+# (might also take some non-negligible amount of time to stabilize after change
+# of setpoint, so would probably be good to have the electrical output of each
+# flow meter in thorsync, if that works on our models + alongside serial usage)
+def set_flow_setpoints(port2flow_controller, trial_setpoints,
+    check_set_flows=False, verbose=False):
+
+    if verbose:
+        print('Setting trial flow controller setpoints:')
+
+    for one_controller_setpoint in trial_setpoints:
+        port = one_controller_setpoint['port']
+        sccm = one_controller_setpoint['sccm']
+
+        unchanged = False
+        if port in _port2last_flow_rate:
+            last_sccm = _port2last_flow_rate[port]
+            if last_sccm == sccm:
+                unchanged = True
+
+        if verbose:
+            # TODO TODO change float formatting to reflect achievable precision
+            # (including both hardware and any loss of precision limitations of
+            # numat/alicat api)
+            cstr = f'- {port}: {sccm:.3f} mL/min'
+            if unchanged:
+                cstr += ' (unchanged)'
+            print(cstr)
+
+        if unchanged:
+            continue
+
+        c = port2flow_controller[port]
+        # TODO TODO TODO convert units + make sure i'm calling in the way
+        # to achieve the best precision
+        # see: https://github.com/numat/alicat/issues/14
+        # From numat/alicat docstring (which might not be infallible):
+        # "in units specified at time of purchase"
+        sccm = float(sccm)
+        c.set_flow_rate(sccm)
+        _port2last_flow_rate[port] = sccm
+
+        if check_set_flows:
+            data = c.get()
+            # TODO may need to change tolerance args because of precision limits
+            if not math.isclose(data['setpoint'], sccm):
+                raise RuntimeError('commanded setpoint was not reflected '
+                    f'in subsequent query. set: {sccm:.3f}, got: '
+                    f'{data["set_point"]:.3f}'
+                )
+
+            if verbose:
+                print('setpoint check OK')
+
+
+# TODO if i ever set gas (or anything beyond set points) rename to
+# restore_initial_flowcontroller_settings or something + also restore those
+# things here
+def restore_initial_setpoints(port2flow_controller, verbose=False):
+    """Restores setpoints populated on opening each controller.
+    """
+    if verbose:
+        print('Restoring initial flow controller set points:')
+
+    for port, c in port2flow_controller.items():
+        initial_setpoint = _port2initial_get_output[port]['setpoint']
+
+        if verbose:
+            # maybe isn't always really mL/min across all our MFCs...
+            print(f'- {port}: {initial_setpoint:.3f} mL/min')
+
+        c.set_flow_rate(initial_setpoint)
+
+
 # (kwarg here?)?
 def format_odor(odor_dict):
     odor_str = odor_dict['name']
     if 'log10_conc' in odor_dict:
         log10_conc = odor_dict['log10_conc']
+
+        # TODO might want to also format in which manifold for clarity in e.g.
+        # pair_concentration_grid.py stuff, in (name == 'solvent'?) solvent case
+
         # This is my convention for indicating the solvent used for a particular
         # odor, in at least the experiments using pair_concentration_grid.py.
         if log10_conc is None:
@@ -985,8 +1233,29 @@ def format_odor(odor_dict):
     return odor_str
 
 
+def format_mixture_pins(pins2odors, trial_pins, delimiter=' AND '):
+    return delimiter.join([format_odor(pins2odors[p])
+        for p in trial_pins if p in pins2odors
+    ])
+
+
 def print_odor(odor_dict):
     print(format_odor(odor_dict))
+
+
+def format_duration_s(duration_s):
+    td = timedelta(seconds=duration_s)
+    td_str = str(td)
+
+    h, m, s = tuple(int(x) for x in td_str.split(':'))
+    parts = [f'{h}h', f'{m}m', f'{s}s']
+    if h == 0:
+        if m == 0:
+            parts = parts[2:]
+        else:
+            parts = parts[1:]
+
+    return ''.join(parts)
 
 
 def seconds_per_trial(all_required_data):
@@ -1032,6 +1301,12 @@ def curr_trial_index(start_time_s, config_or_trial_dur, n_trials=None):
     return trial_idx if trial_idx < n_trials else None
 
 
+def get_trial_pins(pin_sequence, trial_index):
+    """Returns list of int pins for trial at given index.
+    """
+    return list(pin_sequence.pin_groups[trial_index].pins)
+
+
 # TODO add fn that takes a pin_sequence (or pinlist_at_each_trial equivalent),
 # and pins2odors, and prints it all nicely
 
@@ -1048,7 +1323,8 @@ def curr_trial_index(start_time_s, config_or_trial_dur, n_trials=None):
 baud_rate = None
 def run(config, port=None, fqbn=None, do_upload=False,
     allow_version_mismatch=False, ignore_ack=False, try_parse=False,
-    timeout_s=2.0, pause_before_start=True, verbose=False, _first_run=True):
+    timeout_s=2.0, pause_before_start=True, check_set_flows=False,
+    verbose=False, _first_run=True):
     """Runs a single configuration file on the olfactometer.
 
     Args:
@@ -1094,11 +1370,25 @@ def run(config, port=None, fqbn=None, do_upload=False,
             print('Additional config data:')
             pprint(extra_config)
 
+    # TODO TODO make the function named `validate` work on config_dict, and
+    # rename current `validate` to something more specific, indicating it should
+    # be used w/ the AllRequiredData object (the settings that get communicated
+    # to the firmware)
     warn = True
+    validate_config_dict(config_dict, warn=warn)
     validate(all_required_data, warn=warn)
+
+    if check_set_flows and flow_setpoints_sequence_key not in config_dict:
+        raise ValueError('check_set_flows=True only valid if '
+            f'{flow_setpoints_sequence_key} is appropriately populated in '
+            'config'
+        )
 
     if try_parse:
         return
+
+    if check_set_flows:
+        warnings.warn('check_set_flows should only be used for debugging')
 
     if ignore_ack:
         if _first_run:
@@ -1164,26 +1454,42 @@ def run(config, port=None, fqbn=None, do_upload=False,
         baud_rate = parse_baud_from_sketch()
         print(f'Baud rate (parsed from Arduino sketch): {baud_rate}')
 
-    # TODO TODO and if we have pins2odors, also probably replace trial printing
-    # with stuff that has the odor [mixtures] formatted (notion of blocks of
-    # repeats, too? probably not... needs more info)
-    # (though trial prints currently actually come from the arduino...)
-    # TODO might need to include balance pins in input to odor formatting thing,
-    # unless we just assume all pins not in pins2odors are OK to ignore for
-    # formatting (should be true anyway...)
+    n_trials = number_of_trials(all_required_data)
+    if not settings.follow_hardware_timing:
+        one_trial_s = seconds_per_trial(all_required_data)
+        expected_duration_s = n_trials * one_trial_s
+
+        duration_str = format_duration_s(expected_duration_s)
+
+        expected_finish = \
+            datetime.now() + timedelta(seconds=expected_duration_s)
+
+        finish_str = expected_finish.strftime('%I:%M%p').lstrip('0')
+
+        print(f'\n{n_trials} trials')
+        print(f'Will take: {duration_str}, finishing at {finish_str}\n')
 
     # TODO (low priority) maybe only print pins that differ relative to last
     # pins2odors, in a sequence? or indicate those that are the same?
-    if 'pins2odors' in config_dict:
-        pins2odors = config_dict['pins2odors']
+    pins2odors_key = 'pins2odors'
+    if pins2odors_key in config_dict:
+        pins2odors = config_dict[pins2odors_key]
 
+        # TODO TODO also print balances here (at least optionally) (both in
+        # single / multiple manifold cases). maybe visually separated somewhat.
         print('Pins to connect odors to:')
         for p, o in pins2odors.items():
             print(f' {p}: {format_odor(o)}')
 
-    n_trials = number_of_trials(all_required_data)
-    if not settings.follow_hardware_timing:
-        one_trial_s = seconds_per_trial(all_required_data)
+    flow_setpoints_sequence = None
+    if flow_setpoints_sequence_key in config_dict:
+        port2flow_controller = open_alicat_controllers(config_dict)
+
+        flow_setpoints_sequence = config_dict[flow_setpoints_sequence_key]
+
+        set_flow_setpoints(port2flow_controller,
+            flow_setpoints_sequence[0], verbose=verbose
+        )
 
     if pause_before_start:
         # TODO or maybe somehow have this default to True if a generator is
@@ -1244,16 +1550,15 @@ def run(config, port=None, fqbn=None, do_upload=False,
             print('Ready (waiting for hardware triggers)')
         else:
             print('Starting')
+            seen_trial_indices = set()
+            last_trial_idx = None
 
         # TODO err in not settings.follow_hardware_timing case, if enough time
         # has passed before we get first trial status print?
 
         start_time_s = time.time()
 
-        # TODO delete / verbose
-        rl_times = []
-        #
-        last_trial_idx = None
+        readline_times = []
 
         while True:
             if not settings.follow_hardware_timing:
@@ -1264,59 +1569,132 @@ def run(config, port=None, fqbn=None, do_upload=False,
                 trial_idx = curr_trial_index(start_time_s, one_trial_s,
                     n_trials
                 )
-                # TODO delete
-                if trial_idx != last_trial_idx:
-                    print('trial_idx:', trial_idx)
-                    last_trial_idx = trial_idx
-                #
 
-            # TODO delete / verbose
-            #print('reading line...', end='')
-            rl_t0 = time.time()
-            #
+                # If there were much worry that some of the `ser.readline()`
+                # calls below (the only other thing in this loop that should be
+                # slow) could take long, we might want to set these flow
+                # setpoints in some parallel thread/process / use non-blocking
+                # IO in place of this readline() call. However, when I measured
+                # these delays they seemed stable around ~0.10[1-3]s. Most are
+                # right on 0.100s, but maybe slightly longer if actually reading
+                # data?
+
+                # possible that trial_idx could be returned as None very briefly
+                # at the end
+                if trial_idx != last_trial_idx and trial_idx is not None:
+                    trial_pins = get_trial_pins(pin_sequence, trial_idx)
+
+                    # TODO maybe also suffix w/ pins in parens if verbose
+
+                    # p not in pins2odors when it's an explicit balance pin
+                    print(f'trial: {trial_idx + 1}/{n_trials}, odor(s):',
+                        format_mixture_pins(pins2odors, trial_pins)
+                    )
+                    # TODO maybe try to suffix w/ coarse tqdm progress within
+                    # each trial, to get an indication of when next one is up.
+                    # https://stackoverflow.com/questions/62048408
+                    # maybe even visually change / mark odor region/onset on
+                    # progress bar?
+
+                    # for the most part, this seemed to get printed some
+                    # *roughly* 0.1-0.5s after the old print passed through from
+                    # the arduino. could be consistent w/ just the ~0.1s i
+                    # observed for max_readline_s
+                    #print('trial_idx:', trial_idx)
+
+                    if flow_setpoints_sequence is not None:
+                        set_flow_setpoints(
+                            port2flow_controller,
+                            flow_setpoints_sequence[trial_idx],
+                            check_set_flows=check_set_flows,
+                            verbose=verbose
+                        )
+
+                    last_trial_idx = trial_idx
+                    seen_trial_indices.add(trial_idx)
+
+            readline_t0 = time.time()
 
             line = ser.readline()
 
-            # TODO delete / verbose
-            rl_t1 = time.time()
-            rl_s = rl_t1 - rl_t0
-            rl_times.append(rl_s)
-            #print(f'done ({rl_s:.3f}s)')
-            #
+            readline_t1 = time.time()
+            readline_s = readline_t1 - readline_t0
+            readline_times.append(readline_s)
+
             if len(line) > 0:
                 try:
                     line = line.decode()
-                    print(line, end='')
+                    # still letting arduino do printing in this case for now,
+                    # cause way i'm doing it in !follow_hardware_timing case
+                    # relies on the known timing info.
+                    if settings.follow_hardware_timing:
+                        print(line, end='')
+
                     if line.strip() == 'Finished':
                         finish_time_s = time.time()
                         break
+
+                    # TODO mayyybe could parse trial pins reported and compare
+                    # to expected. a bit paranoid though...
+                    # (might be useful to print odors in follow_hardware_timing
+                    # case too, but not sure i care that much about that case
+                    # anymore)
+                    #pins = [
+                    #    int(p) for p in line.split(':')[-1].strip().split(',')
+                    #]
+
                 # Docs say decoding errors will be a ValueError or a subclass.
                 # UnicodeDecodeError, for instance, is a subclass.
                 except ValueError as e:
                     print(e)
                     print(line)
 
+        max_readline_s = max(readline_times)
+        # Were all right around 0.1s last I measured
+        if flow_setpoints_sequence is not None and max_readline_s > 0.11:
+            warnings.warn('max readline time might have been long enough to '
+                'cause problems setting flow rates in a timely manner '
+                f'({max_readline_s:.3f}s)'
+            )
+
         duration_s = finish_time_s - start_time_s
-
-        # TODO delete / verbose
-        max_rl_s = max(rl_times)
-        # (currently ~0.10[1-3]s. most are right on 0.100s, but maybe slightly
-        # longer if actually reading data?.)
-        #print(f'max_rl_s: {max_rl_s:.3f}')
-        #
-
-        print('trial index after finishing (should be None):',
-            curr_trial_index(start_time_s, one_trial_s, n_trials)
-        )
 
         # If we are just triggering off of input pulses, as in
         # follow_hardware_timing case, we don't know how long trials will be.
         if not settings.follow_hardware_timing:
-            # TODO warn / err if these differ by more than some atol/rtol
-            expected_duration_s = n_trials * one_trial_s
-            print('duration_s:', duration_s)
-            print('expected_duration_s:', expected_duration_s)
-            import ipdb; ipdb.set_trace()
+            max_duration_diff_s = 0.5
+            duration_diff_s = duration_s - expected_duration_s
+            if abs(duration_diff_s) > max_duration_diff_s:
+                warnings.warn('experiment duration differed from expectation by'
+                    f'{duration_diff_s:.3f} (or communication with something '
+                    'took longer than normal to finish up at the end)'
+                )
+
+            expected_seen_trials_indices = set(range(n_trials))
+            if not seen_trial_indices == expected_seen_trials_indices:
+                missing = expected_seen_trials_indices - seen_trial_indices
+                warnings.warn('flow controller updating might have missed '
+                    'some trials!!!'
+                )
+
+            # i haven't yet seen this actually None, cause for whatever reason,
+            # duration_s is usually something like ~0.008s less than
+            # expected_duration_s. i guess because the time it takes to intiate
+            # stuff at the start, so None actually may never practically be
+            # reached.
+            '''
+            trial_idx_after_finished = curr_trial_index(
+                start_time_s, one_trial_s, n_trials
+            )
+            if trial_idx_after_finished is not None:
+                warnings.warn('expected curr_trial_index to return None after '
+                'microcontroller reports being finished'
+                )
+            '''
+
+        if flow_setpoints_sequence is not None:
+            restore_initial_setpoints(port2flow_controller, verbose=verbose)
+
 
 
 def main(config, hardware_config=None, _skip_config_preprocess_check=False,

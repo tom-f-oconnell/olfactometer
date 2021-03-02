@@ -215,7 +215,9 @@ def get_port_and_fqbn(port=None, fqbn=None, will_upload=True):
             continue
 
         if found_port is not None:
-            # TODO TODO test this case
+            # TODO could try to continue until end of loop in this case, storing
+            # matching stuff, to print a list of stuff that could be narrowed
+            # down by -p/-f
             raise IOError(f'found multiple boards{match_str}. ambiguous! '
                 'try explicitly specifying -p/-f.'
             )

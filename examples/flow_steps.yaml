@@ -1,0 +1,86 @@
+settings:
+  # The parameters under this key are for specifying the timing of
+  # individual trials (each with a single pulse from the valve(s)).
+  # All trials will share this timing.
+  # All of these parameters are in units of microseconds.
+  timing:
+    # Baseline period.
+    pre_pulse_us: 5000000
+
+    # How long the valve(s) will actually be delivering odor for.
+    pulse_us: 1000000
+
+    # Delay before next trial.
+    # NOTE: the time from offset of the pulse to the onset of the
+    # next trial (if there is one) will be:
+    # (post_pulse_us + pre_pulse_us)
+    post_pulse_us: 14000000
+
+  balance_pin: 50
+
+# Example trial structure with 4 trials. If your microcontroller 
+# has pin 13 connected to the builtin LED (as Arduino Unos and 
+# Megas do), running this config will flash that LED once per trial 
+# (for 1s each time).
+pin_sequence:
+  # The rows in this bulleted list happen one after the other.
+  # If the 'timing' key is specified above, each row
+  # (i.e. "- pins: ...") will take
+  # (pre_pulse_us + pulse_us + post_pulse_us) microseconds.
+  pin_groups:
+  # The pins listed in each of these rows will all be concurrently 
+  # switched ONCE (LOW for pre_pulse_us -> HIGH for pulse_us ->
+  # LOW for post_pulse_us)
+  - pins: [38]
+  - pins: [38]
+  - pins: [38]
+  - pins: [38]
+  - pins: [39]
+  - pins: [40]
+
+
+# TODO may be easier to be clear on achievable precision if we require inputs to
+# be strings? or prevent parser from converting to numbers? or just figure out
+# intended precision somehow (always possible?)?
+# TODO allow specifying offset before trial when flow should be changed?
+# (idk... cause would i want it to overlap w/ last trial or add time?)
+
+# This is optional, but if it's specified, it must be the same length as
+# pin_sequence.pin_groups above.
+flow_setpoints_sequence:
+  - - port: COM13
+      sccm: 1800
+    - port: COM14
+      sccm: 200
+  - - port: COM13
+      sccm: 1980
+    - port: COM14
+      sccm: 20
+  - - port: COM13
+      sccm: 1998
+    - port: COM14
+      sccm: 2
+  - - port: COM13
+      sccm: 1800
+    - port: COM14
+      sccm: 200
+  - - port: COM13
+      sccm: 1800
+    - port: COM14
+      sccm: 200
+  - - port: COM13
+      sccm: 1800
+    - port: COM14
+      sccm: 200
+
+pins2odors:
+  38:
+    name: odor
+    log10_conc: -2
+  39:
+    name: odor
+    log10_conc: -3
+  40:
+    name: odor
+    log10_conc: -4
+

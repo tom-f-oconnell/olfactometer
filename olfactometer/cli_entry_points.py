@@ -17,6 +17,12 @@ def main_cli():
         help='exit after attempting to parse config. no need for a connected '
         'Arduino.'
     )
+    parser.add_argument('-c', '--check-set-flows', action='store_true',
+        default=False, help='query flow controllers after each change in '
+        'setpoints to see the change seems to have been applied. only for '
+        'debugging experiments involving flow controllers. does NOT check '
+        'ACHIEVED flow rates.'
+    )
     parser.add_argument('-k', '--ignore-ack', action='store_true',
         default=False, help='ignores acknowledgement message #s arduino sends. '
         'makes viewing all debug prints FROM THE FIRMWARE easier, as it '
@@ -43,6 +49,7 @@ def main_cli():
     fqbn = args.fqbn
     # TODO uncomment if i resolve version_str issue
     #allow_version_mismatch = args.allow_version_mismatch
+    check_set_flows = args.check_set_flows
     try_parse = args.try_parse
     ignore_ack = args.ignore_ack
     hardware_config = args.hardware
@@ -55,7 +62,7 @@ def main_cli():
         #allow_version_mismatch=allow_version_mismatch,
         ignore_ack=ignore_ack, try_parse=try_parse,
         hardware_config=hardware_config, pause_before_start=pause_before_start,
-        verbose=verbose
+        check_set_flows=check_set_flows, verbose=verbose
     )
     
 
