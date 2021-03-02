@@ -100,12 +100,12 @@ def valve_test_cli():
         f'{bal_default_on_s:.1f}/{bal_default_off_s} in this case. default '
         f'n_repeats becomes {default_n_repeats}.'
     )
-    '''
+    # TODO maybe it should support -b somehow? right now it can't really, cause
+    # not using hardware def at all here
     parser.add_argument('-i', '--pins', type=str, default=None,
-        help='if passed, will use this subset of pins from available_valve_pins'
-        ' in the hardware definition'
+        help='if passed, will use these pins (comma separated) rather than '
+        'hardware definition. tested in order passed.'
     )
-    '''
     args = parser.parse_args()
 
     do_upload = args.upload
@@ -124,6 +124,14 @@ def valve_test_cli():
     # `get_available_pins`) hardware definition, so we don't need to worry about
     # checking they are defined, in the case where this is true.
     use_balances = args.balance
+    cli_pins = args.pins
+    if cli_pins is not None:
+        if use_balances:
+            raise NotImplementedError('--pins and --balance can not currently '
+                'be used together'
+            )
+
+        cli_pins = [int(p) for p in cli_pins.split(',')]
 
     if n_repeats is None:
         if not use_balances:
@@ -168,15 +176,21 @@ def valve_test_cli():
 
     generated_config_dict = common.parse_common_settings(config_data)
 
-    if not use_balances:
-        trial_pins = available_valve_pins + list(set(pins2balances.values()))
-    else:
-        # Not going to have test trials dedicated to balance pins in the
-        # use_balances case.
-        trial_pins = available_valve_pins
+    if cli_pins is None:
+        if not use_balances:
+            trial_pins = (
+                available_valve_pins + list(set(pins2balances.values()))
+            )
+        else:
+            # Not going to have test trials dedicated to balance pins in the
+            # use_balances case.
+            trial_pins = available_valve_pins
 
-    # Easier to monitor test if pins are used in order.
-    trial_pins = sorted(trial_pins)
+        # Easier to monitor test if pins are used in order.
+        trial_pins = sorted(trial_pins)
+
+    else:
+        trial_pins = cli_pins
 
     pinlist_at_each_trial = [[p] for p in trial_pins for _ in range(n_repeats)]
     del trial_pins
