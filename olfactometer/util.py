@@ -1509,7 +1509,8 @@ def run(config, port=None, fqbn=None, do_upload=False,
         # in the same run of this script, it doesn't need to be parsed / printed
         # again.
         baud_rate = parse_baud_from_sketch()
-        print(f'Baud rate (parsed from Arduino sketch): {baud_rate}\n')
+        if verbose:
+            print(f'Baud rate (parsed from Arduino sketch): {baud_rate}\n')
 
     flow_setpoints_sequence = None
     if flow_setpoints_sequence_key in config_dict:
@@ -1527,6 +1528,8 @@ def run(config, port=None, fqbn=None, do_upload=False,
         )
         print()
 
+    # TODO maybe refactor so all these prints are also included in in
+    # --try-parse case?
     n_trials = number_of_trials(all_required_data)
     if not settings.follow_hardware_timing:
         one_trial_s = seconds_per_trial(all_required_data)
