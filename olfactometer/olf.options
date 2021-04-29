@@ -30,7 +30,7 @@ PinGroup.pins max_count:5
 # issue (if it ever was) (I needed at least 48 for my pair concentration grid
 # experiments though, when using 3 concentrations for each pair, separate
 # solvents for each, and 3 trials)
-PinSequence.pin_groups max_count:50
+PinSequence.pin_groups max_count:80
 
 # TODO look in to msgid if useful for picking one of two requests that might
 # arrive at a particular time (status request vs pin sequence, maybe?)
