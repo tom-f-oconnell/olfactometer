@@ -30,6 +30,8 @@ setup(
 
         'alicat',
 
+        'pyperclip',
+
         # TODO TODO delete after debugging
         'ipdb'
     ],

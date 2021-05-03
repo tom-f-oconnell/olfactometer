@@ -31,6 +31,7 @@ from google.protobuf.internal.encoder import _VarintBytes
 from google.protobuf import json_format, pyext
 import yaml
 from alicat import FlowController
+import pyperclip
 
 from olfactometer import upload
 from olfactometer.generators import common, basic, pair_concentration_grid
@@ -1532,18 +1533,22 @@ def run(config, port=None, fqbn=None, do_upload=False,
     # --try-parse case?
     n_trials = number_of_trials(all_required_data)
     if not settings.follow_hardware_timing:
+        # TODO factor this out so i can calculate how long various trial structures
+        # would be without needing to try to run them (or even an arduino) (+ printing
+        # below)
         one_trial_s = seconds_per_trial(all_required_data)
         expected_duration_s = n_trials * one_trial_s
 
         duration_str = format_duration_s(expected_duration_s)
 
-        expected_finish = \
-            datetime.now() + timedelta(seconds=expected_duration_s)
-
-        finish_str = expected_finish.strftime('%I:%M%p').lstrip('0')
-
         print(f'{n_trials} trials')
-        print(f'Will take: {duration_str}, finishing at {finish_str}\n')
+        print(f'Will take: {duration_str}')
+
+    # It's a file in this case, and we are copying the file path to the clipboard.
+    if type(config) is str:
+        # TODO allow disabling this with env var (appropriately set)
+        pyperclip.copy(config)
+        print(f'Copied {config} to clipboard\n')
 
     # TODO (low priority) maybe only print pins that differ relative to last
     # pins2odors, in a sequence? or indicate those that are the same?
@@ -1558,6 +1563,8 @@ def run(config, port=None, fqbn=None, do_upload=False,
         for p, o in pins2odors.items():
             print(f' {p}: {format_odor(o)}')
 
+    # TODO maybe have option to try to save clipboard before filling it w/ pyperclip and
+    # here (just since we should have pasted by here), maybe fill w/ old contents?
     if pause_before_start:
         # TODO or maybe somehow have this default to True if a generator is
         # being used (especially if i don't add some way to have that re-use
@@ -1566,6 +1573,15 @@ def run(config, port=None, fqbn=None, do_upload=False,
         # TODO maybe prompt user to connect arduino if after Enter is pressed
         # here, the serial device would fail to be found in the next line
         input('Press Enter once the odors are connected')
+
+    if not settings.follow_hardware_timing:
+        # TODO factor this + above calculation of duration into separate CLI util
+        expected_finish = \
+            datetime.now() + timedelta(seconds=expected_duration_s)
+
+        finish_str = expected_finish.strftime('%I:%M%p').lstrip('0')
+        print(f'Will finish at: {finish_str}')
+        #
 
     # TODO TODO define some class that has its own context manager that maybe
     # essentially wraps the Serial one? (just so people don't need that much
