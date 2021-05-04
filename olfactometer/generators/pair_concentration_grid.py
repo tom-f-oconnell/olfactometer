@@ -84,7 +84,14 @@ def make_config_dict(generator_config_yaml_dict):
     common_generated_config_dict = common.parse_common_settings(data)
 
     global_log10_concentrations = data['global_log10_concentrations']
+    # TODO update this + all code that uses it if i want to allow odor specific
+    # log10_concentrations key to have values of length different from
+    # global_log10_concentrations (currently enforced in get_odor_concs)
     n_concentrations = len(global_log10_concentrations)
+
+    solvent_during_concentration_increase = data.get(
+        'solvent_during_concentration_increase', False
+    )
 
     # Currently only supporting the case where the trials are all consecutive.
     n_repeats = data['n_repeats']
@@ -128,14 +135,68 @@ def make_config_dict(generator_config_yaml_dict):
     if randomize_pair_order:
         random.shuffle(odor_pairs)
 
+    def get_odor_name(odor):
+        """
+        odor (dict|str): representation of odor
+        """
+        if type(odor) is str:
+            name = odor
+
+        elif type(odor) is dict:
+            # requires that this dict returns items in same order as in YAML,
+            # where odor name will be first
+            name, value = list(odor.items())[0]
+            # Works for format
+            #    - <odor name>:
+            #      log10_concentrations: [-x, -y, -z]
+            assert value is None
+
+        else:
+            assert False, 'expected str or dict for odor'
+
+        return name
+
+    odor_specific_concs_key = 'log10_concentrations'
+    def get_odor_concs(odor):
+        """
+        odor (dict|str): representation of odor
+        """
+        if type(odor) is str:
+            odor_log10_concs = global_log10_concentrations
+
+        elif type(odor) is dict:
+            # Works for format
+            #    - <odor name>:
+            #      log10_concentrations: [-x, -y, -z]
+            odor_log10_concs = odor.get(
+                odor_specific_concs_key, global_log10_concentrations
+            )
+            # currently just not supported
+            assert len(odor_log10_concs) == len(global_log10_concentrations)
+
+        else:
+            assert False, 'expected str or dict for odor'
+
+        return odor_log10_concs
+
     # TODO refactor so loop body is just a function call?
     generated_config_dicts = []
     for pair in odor_pairs:
         generated_config_dict = deepcopy(common_generated_config_dict)
 
-        odor1_name, odor2_name = pair['pair']
-        assert type(odor1_name) is str
-        assert type(odor2_name) is str
+        odor1, odor2 = pair['pair']
+
+        odor1_name = get_odor_name(odor1)
+        odor2_name = get_odor_name(odor2)
+
+        odor1_log10_concs = get_odor_concs(odor1)
+        odor2_log10_concs = get_odor_concs(odor2)
+
+        assert odor1_name != odor2_name
+        odor_name2log10_concs = {
+            odor1_name: odor1_log10_concs,
+            odor2_name: odor2_log10_concs,
+        }
 
         if single_manifold:
             # This solvent is not the usual balance (though there is that too).
@@ -154,8 +215,9 @@ def make_config_dict(generator_config_yaml_dict):
 
             for n in (odor1_name, odor2_name):
                 odor_vials.extend([{'name': n, 'log10_conc': c}
-                    for c in global_log10_concentrations
+                    for c in odor_name2log10_concs[n]
                 ])
+
             n_vials = len(odor_vials)
             # The '+ 1' is for a solvent blank that is shared between the two
             # odors in the pair (and likely would be across pairs too).
@@ -186,7 +248,7 @@ def make_config_dict(generator_config_yaml_dict):
                 assert len(available_group_valve_pins) >= n_concentrations + 1
 
                 group_vials = [{'name': n, 'log10_conc': c}
-                    for c in (None,) + tuple(global_log10_concentrations)
+                    for c in (None,) + tuple(odor_name2log10_concs[n])
                 ]
                 odor_vials.extend(group_vials)
 
@@ -230,19 +292,32 @@ def make_config_dict(generator_config_yaml_dict):
         # (i.e. n1 != odor1_name, at least not always).
         del odor1_name, odor2_name
 
-        concentrations = (None,) + tuple(sorted(global_log10_concentrations))
+        # The order in `odor_name_order`, and thus which odor name is assigned
+        # to `n1` and which to `n2` determines the order in which they ramp.
+        # `n1` ramps first (though which is ramped alternates between each set
+        # of concentrations).
+        n1, n2 = odor_name_order
+
+        # TODO choose diff variable names for either these / odor<n>_log10_concs / both,
+        # to be more clear on how they actually differ
+        odor1_concentrations = (None,) + tuple(sorted(odor_name2log10_concs[n1]))
+        odor2_concentrations = (None,) + tuple(sorted(odor_name2log10_concs[n2]))
 
         # seems to follow the the column order i want if i use this inequality,
         # rather than i <= j. reversing the variables in each loop (for j -> for
         # i) would probably have the same effect.
         index_tuple_lists = [[(i, j)] if i == j else [(i, j), (j, i)]
-            for i in range(len(concentrations))
-            for j in range(len(concentrations)) if j <= i
+            for i in range(len(odor1_concentrations))
+            for j in range(len(odor2_concentrations)) if j <= i
         ]
         # Flatten out the nested lists created above (which were used to order
         # stuff symmetric across the diagonal at each off-diagonal step)
         pair_conc_index_order = [x for xs in index_tuple_lists for x in xs]
         del index_tuple_lists
+
+        # TODO refactor to use lengths of each list separately, instead of
+        # n_concentrations (though currently i do check custom conc ranges have same
+        # length as global [-5, -4, -3] in my current config)
 
         # The '+ 2 * n_concentrations' is for the single-odor case (where the
         # other is zero concentration, and instead the solvent valve is
@@ -250,11 +325,18 @@ def make_config_dict(generator_config_yaml_dict):
         n_unique_conc_pairs = n_concentrations**2 + 2 * n_concentrations + 1
         assert len(pair_conc_index_order) == n_unique_conc_pairs
 
-        # The order in `odor_name_order`, and thus which odor name is assigned
-        # to `n1` and which to `n2` determines the order in which they ramp.
-        # `n1` ramps first (though which is ramped alternates between each set
-        # of concentrations).
-        n1, n2 = odor_name_order
+        if solvent_during_concentration_increase:
+            # Assumes that (1, 0) comes before (0, 1), (2, 0) before (0, 2), and so on,
+            # which is True given how I'm generating pair_conc_index_order
+            for i in range(len(odor1_concentrations)):
+                if i == 0:
+                    continue
+
+                curr_ramp_idx = pair_conc_index_order.index((i, 0))
+                assert pair_conc_index_order[curr_ramp_idx + 1] == (0, i)
+                # TODO TODO test in single manifold case. this might have a different
+                # form there
+                pair_conc_index_order.insert(curr_ramp_idx + 1, (0, 0))
 
         pinlist_at_each_trial = []
         # Just building this for debugging / display purposes. Could otherwise
@@ -265,8 +347,8 @@ def make_config_dict(generator_config_yaml_dict):
         # all combinations of the lower concentrations before moving on to any
         # of the higher concentrations (of either odor).
         for conc_idx1, conc_idx2 in pair_conc_index_order:
-            c1 = concentrations[conc_idx1]
-            c2 = concentrations[conc_idx2]
+            c1 = odor1_concentrations[conc_idx1]
+            c2 = odor2_concentrations[conc_idx2]
 
             o1 = get_vial_tuple(n1, c1)
             o2 = get_vial_tuple(n2, c2)
@@ -310,7 +392,16 @@ def make_config_dict(generator_config_yaml_dict):
             curr_odors = [o1, o2] if len(pins) > 1 else [o1]
             odorlist_at_each_trial.extend([curr_odors] * n_repeats)
 
+
         expected_total_n_trials = n_repeats * n_unique_conc_pairs
+
+        if solvent_during_concentration_increase:
+            # Since there will be one increase in concentration for each concentration
+            # tested (since also doing solvent first), and each time the solvent is
+            # presented between new-highest-concentrations, it is presented n_repeats
+            # times, just as everything else is.
+            expected_total_n_trials += n_repeats * len(global_log10_concentrations)
+
         assert len(pinlist_at_each_trial) == expected_total_n_trials
         del expected_total_n_trials
 
