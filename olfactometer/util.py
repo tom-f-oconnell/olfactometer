@@ -1597,6 +1597,7 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         print(f'Copied {config} to clipboard\n')
 
     print_pins2odors(config_dict)
+    print()
 
     # TODO maybe have option to try to save clipboard before filling it w/ pyperclip and
     # here (just since we should have pasted by here), maybe fill w/ old contents?

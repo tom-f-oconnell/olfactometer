@@ -43,6 +43,9 @@ post_pulse_s: 11
 # some point... it's pretty niche. unless it has enough use just as an
 # example...
 
+# TODO delete after refactoring debug stuff
+import os
+#
 import random
 from copy import deepcopy
 import warnings
@@ -89,12 +92,14 @@ def make_config_dict(generator_config_yaml_dict):
     # global_log10_concentrations (currently enforced in get_odor_concs)
     n_concentrations = len(global_log10_concentrations)
 
-    solvent_during_concentration_increase = data.get(
-        'solvent_during_concentration_increase', False
+    solvent_during_concentration_ramps = data.get(
+        'solvent_during_concentration_ramps', False
     )
 
     # Currently only supporting the case where the trials are all consecutive.
     n_repeats = data['n_repeats']
+
+    reverse = data.get('reverse', False)
 
     odor_pairs = data['odor_pairs']
 
@@ -143,6 +148,8 @@ def make_config_dict(generator_config_yaml_dict):
             name = odor
 
         elif type(odor) is dict:
+            # TODO why would i not just do odor['name'] ???
+
             # requires that this dict returns items in same order as in YAML,
             # where odor name will be first
             name, value = list(odor.items())[0]
@@ -306,6 +313,8 @@ def make_config_dict(generator_config_yaml_dict):
         # seems to follow the the column order i want if i use this inequality,
         # rather than i <= j. reversing the variables in each loop (for j -> for
         # i) would probably have the same effect.
+        # TODO is the reversal of i, j in the tuples an error in non-square input case?
+        # (or in general...)
         index_tuple_lists = [[(i, j)] if i == j else [(i, j), (j, i)]
             for i in range(len(odor1_concentrations))
             for j in range(len(odor2_concentrations)) if j <= i
@@ -313,7 +322,6 @@ def make_config_dict(generator_config_yaml_dict):
         # Flatten out the nested lists created above (which were used to order
         # stuff symmetric across the diagonal at each off-diagonal step)
         pair_conc_index_order = [x for xs in index_tuple_lists for x in xs]
-        del index_tuple_lists
 
         # TODO refactor to use lengths of each list separately, instead of
         # n_concentrations (though currently i do check custom conc ranges have same
@@ -325,7 +333,7 @@ def make_config_dict(generator_config_yaml_dict):
         n_unique_conc_pairs = n_concentrations**2 + 2 * n_concentrations + 1
         assert len(pair_conc_index_order) == n_unique_conc_pairs
 
-        if solvent_during_concentration_increase:
+        if solvent_during_concentration_ramps:
             # Assumes that (1, 0) comes before (0, 1), (2, 0) before (0, 2), and so on,
             # which is True given how I'm generating pair_conc_index_order
             for i in range(len(odor1_concentrations)):
@@ -334,9 +342,72 @@ def make_config_dict(generator_config_yaml_dict):
 
                 curr_ramp_idx = pair_conc_index_order.index((i, 0))
                 assert pair_conc_index_order[curr_ramp_idx + 1] == (0, i)
+
                 # TODO TODO test in single manifold case. this might have a different
                 # form there
                 pair_conc_index_order.insert(curr_ramp_idx + 1, (0, 0))
+
+        if reverse:
+            pair_conc_index_order = pair_conc_index_order[::-1]
+
+        # TODO delete / refactor
+        if 'OLFACTOMETER_DEBUG' in os.environ:
+            from pprint import pprint
+            import matplotlib.pyplot as plt
+            import numpy as np
+
+            print(f'{odor1_concentrations=}')
+            print(f'{odor2_concentrations=}')
+
+            print('index_tuple_lists:')
+            pprint(index_tuple_lists)
+
+            print('pair_conc_index_order:')
+            pprint(pair_conc_index_order)
+
+            fig, ax = plt.subplots()
+            mat = (np.nan *
+                np.empty((len(odor1_concentrations), len(odor2_concentrations)))
+            )
+            ax.matshow(mat)
+
+            for order_idx, (i, j) in enumerate(pair_conc_index_order):
+                mat[i, j] = order_idx + 1
+            print(mat)
+
+            for (i, j), z in np.ndenumerate(mat):
+                ax.text(j, i, '{:.0f}'.format(z), ha='center', va='center')
+
+            def ticklabels(concs):
+                return [('solvent' if x is None else str(x)) for x in concs]
+
+            yticklabels = ticklabels(odor1_concentrations)
+            print(f'{yticklabels=}')
+            ax.set_yticklabels(yticklabels)
+            ax.set_yticks(range(len(odor1_concentrations)))
+            ax.set_ylabel(n1)
+
+            xticklabels = ticklabels(odor2_concentrations)
+            print(f'{xticklabels=}')
+            ax.set_xticklabels(xticklabels)
+            ax.set_xticks(range(len(odor2_concentrations)))
+            ax.set_xlabel(n2)
+            ax.xaxis.set_label_position('top')
+            ax.xaxis.set_ticks_position('top')
+
+            # TODO get the grid to have matrix value text centered in each cell but also
+            # have ticklabels centered along each axis (now ticklabels want to be on
+            # grid)
+            #ax.set_yticks([x + 0.5 for x in range(len(odor1_concentrations))])
+            #ax.set_xticks([x + 0.5 for x in range(len(odor2_concentrations))])
+            #ax.grid()
+
+            # TODO why does serial.Serial opening seem to complain about /dev/ttyACM0
+            # being busing if i don't comment this...?
+            #plt.show()
+        #
+
+        del index_tuple_lists
 
         pinlist_at_each_trial = []
         # Just building this for debugging / display purposes. Could otherwise
@@ -395,7 +466,7 @@ def make_config_dict(generator_config_yaml_dict):
 
         expected_total_n_trials = n_repeats * n_unique_conc_pairs
 
-        if solvent_during_concentration_increase:
+        if solvent_during_concentration_ramps:
             # Since there will be one increase in concentration for each concentration
             # tested (since also doing solvent first), and each time the solvent is
             # presented between new-highest-concentrations, it is presented n_repeats
