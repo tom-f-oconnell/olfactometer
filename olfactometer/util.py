@@ -1406,6 +1406,8 @@ def get_pins2odors(config_dict):
 
 def print_pins2odors(config_dict, header=True):
     pins2odors = get_pins2odors(config_dict)
+    if pins2odors is None:
+        return
 
     # TODO TODO also print balances here (at least optionally) (both in
     # single / multiple manifold cases). maybe visually separated somewhat.
