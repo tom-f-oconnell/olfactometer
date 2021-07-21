@@ -1307,8 +1307,8 @@ def format_duration_s(duration_s):
     td = timedelta(seconds=duration_s)
     td_str = str(td)
 
-    h, m, s = tuple(int(x) for x in td_str.split(':'))
-    parts = [f'{h}h', f'{m}m', f'{s}s']
+    h, m, s = tuple(float(x) for x in td_str.split(':'))
+    parts = [f'{h:.0f}h', f'{m:.0f}m', f'{s:.0f}s']
     if h == 0:
         if m == 0:
             parts = parts[2:]
@@ -1432,7 +1432,8 @@ def print_pins2odors(config_dict, header=True):
 baud_rate = None
 def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
     pause_before_start=True, check_set_flows=False, allow_version_mismatch=False,
-    ignore_ack=False, try_parse=False, verbose=False, _first_run=True):
+    ignore_ack=False, try_parse=False, speed_factor=None, verbose=False,
+    _first_run=True):
     """Runs a single configuration file on the olfactometer.
 
     Args:
@@ -1448,6 +1449,16 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
 
     # TODO rename all_required_data to indicate it is the protobuf message(s)?
     all_required_data, config_dict = load(config)
+
+    if speed_factor is not None:
+        warnings.warn('speeding up valve off periods by a factor of '
+            f'{speed_factor} for testing faster'
+        )
+        timing = all_required_data.settings.timing
+        timing.pre_pulse_us = int(round(timing.pre_pulse_us / speed_factor))
+        timing.pulse_us = int(round(timing.pulse_us / speed_factor))
+        timing.post_pulse_us = int(round(timing.post_pulse_us / speed_factor))
+
     settings = all_required_data.settings
     pin_sequence = all_required_data.pin_sequence
 
@@ -1608,7 +1619,9 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         #
 
     pins2odors = get_pins2odors(config_dict)
+
     n_trials = number_of_trials(all_required_data)
+    one_trial_s = seconds_per_trial(all_required_data)
 
     # TODO TODO define some class that has its own context manager that maybe
     # essentially wraps the Serial one? (just so people don't need that much

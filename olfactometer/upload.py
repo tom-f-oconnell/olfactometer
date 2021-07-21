@@ -204,7 +204,16 @@ def get_port_and_fqbn(port=None, fqbn=None, will_upload=True):
 
         assert len(xs) == 1
         x = xs[0]
-        curr_fqbn = x['FQBN']
+
+        # NOTE: I used 'FQBN' before with success and now on one machine the key is
+        # lowercased instead, so just checking both for now
+        fqbn_key = 'FQBN'
+        for lower in (True, False):
+            curr_fqbn_key = fqbn_key if not lower else fqbn_key.lower()
+            if curr_fqbn_key in x.keys():
+                curr_fqbn = x[curr_fqbn_key]
+                break
+
         if fqbn is not None and curr_fqbn != fqbn:
             # TODO maybe log here w/ reason for skipping
             continue

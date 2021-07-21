@@ -30,10 +30,9 @@ def main_cli():
             'prevents the prints from interfering with receipt of the message '
             'numbers.'
         )
-        # TODO TODO add an arg to shorten all valve OFF periods to a fixed value /
-        # value scaled from original / value derived by subtracting from original
-        # (something like --shorten-offs-by/--override-off-secs), for testing
-        # stimulus programs quickly. warn that it should only be used for testing.
+        parser.add_argument('-s', '--speed-factor', type=float,
+            help='speeds up stimulus program by this factor to test faster'
+        )
 
     # TODO maybe add arg to specify generated YAML w/ pins2odors to use?
     # (for subsequent generation of a subset of odors, for testing?)
@@ -50,26 +49,23 @@ def valve_test_cli():
 
     default_n_repeats = 3
     bal_default_n_repeats = 1
-    parser.add_argument('-n', '--n-repeats', type=int, default=None,
-        help='how many times to pulse each valve (default: '
-        f'{default_n_repeats})'
+    parser.add_argument('-n', '--n-repeats', type=int, help='how many times to pulse '
+        f'each valve (default: {default_n_repeats})'
     )
     default_on_s = 0.5
     default_off_s = 0.5
     bal_default_on_s = 2.0
     bal_default_off_s = 0.5
-    parser.add_argument('-s', '--on-secs', type=float, default=None,
-        help='how many seconds to actuate each valve for (default: '
-        f'{default_on_s:.1f})'
+    parser.add_argument('-s', '--on-secs', type=float, help='how many seconds to '
+        f'actuate each valve for (default: {default_on_s:.1f})'
     )
     # TODO check that my code works if pre_pulse_us is 0, or whether i need to
     # set it to some small value, and enforce that this is > that small value
     # (or if post_pulse_us works as 0 but pre_pulse_us doesn't, swap the usage
     # of the two here)
     # TODO or just set one of [pre/post]... to a very small value
-    parser.add_argument('-o', '--off-secs', type=float, default=None,
-        help='how many seconds between valve actuations (default: '
-        f'{default_off_s:.1f})'
+    parser.add_argument('-o', '--off-secs', type=float, help='how many seconds between '
+        f'valve actuations (default: {default_off_s:.1f})'
     )
 
     # Balance pins are currently part of required (enforced by
@@ -86,9 +82,9 @@ def valve_test_cli():
 
     # TODO maybe it should support -b somehow? right now it can't really, cause
     # not using hardware def at all here
-    parser.add_argument('-i', '--pins', type=str, default=None, dest='cli_pins',
-        help='if passed, will use these pins (comma separated) rather than '
-        'hardware definition. tested in order passed.'
+    parser.add_argument('-i', '--pins', type=str, dest='cli_pins', help='if passed, '
+        'will use these pins (comma separated) rather than hardware definition. tested '
+        'in order passed.'
     )
 
     kwargs = util.parse_args(parser)
@@ -200,10 +196,9 @@ def upload_cli():
         default=False, help='shows arduino-cli compilation "build properties" '
         'and exits (without compiling or uploading)'
     )
-    parser.add_argument('-b', '--build-root', action='store', default=None,
-        help='directory to create Arduino sketch and libraries under, '
-        'for inspection during troubleshooting. default is a temporary '
-        'directory.'
+    parser.add_argument('-b', '--build-root', action='store', help='directory to create'
+        ' Arduino sketch and libraries under, for inspection during troubleshooting. '
+        'default is a temporary directory.'
     )
     parser.add_argument('-g', '--arduino-debug-prints', action='store_true',
         default=False, help='compile Arduino code with DEBUG_PRINTS defined. '
