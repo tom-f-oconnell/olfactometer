@@ -50,6 +50,8 @@ setup(
             # TODO still want the olf prefix for this one?
             'olf-test-valves=olfactometer:valve_test_cli',
             'olf-upload=olfactometer:upload_cli',
+            'olf-time=olfactometer:print_config_time_cli',
+            'olf-pins2odors=olfactometer:show_pins2odors_cli',
             # See TODO in upload.version_str definition. until it's addressed,
             # that function won't be able to provide any meaningful output
             #'olf-version-str=olfactometer:version_str',

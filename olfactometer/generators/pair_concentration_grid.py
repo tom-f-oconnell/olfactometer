@@ -75,7 +75,7 @@ def make_config_dict(generator_config_yaml_dict):
 
     When passed a Python file, rather than directly usable configuration YAML,
     the olfactometer will expect the Python file to have a function with this
-    name and this output behavior. 
+    name and this output behavior.
     """
     data = generator_config_yaml_dict
 
@@ -426,6 +426,7 @@ if __name__ == '__main__':
 
     generator_config_yaml_fname = \
         '/home/tom/src/tom_olfactometer_configs/pair_concentration_grid.yaml'
+
     with open(generator_config_yaml_fname, 'r') as f:
         yaml_dict = yaml.safe_load(f)
 
@@ -442,5 +443,4 @@ if __name__ == '__main__':
             assert type(yaml_dict) is dict
             print('\n' + '#' * 80)
             print(yaml.dump(yaml_dict))
-
 

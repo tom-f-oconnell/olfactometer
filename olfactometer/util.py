@@ -36,7 +36,7 @@ import pyperclip
 from olfactometer import upload
 from olfactometer.generators import common, basic, pair_concentration_grid
 
-in_docker = 'OLFACTOMETER_IN_DOCKER' in os.environ
+IN_DOCKER = 'OLFACTOMETER_IN_DOCKER' in os.environ
 
 # TODO TODO could try to replace everything using this w/
 # pkg_resources.find_resource, though not sure this will actually support any
@@ -62,7 +62,7 @@ assert exists(this_package_dir), \
 # The build process handles this in the Docker case. If the code would changes
 # (which can only happen through a build) it would trigger protoc compilation as
 # part of the build.
-if not in_docker:
+if not IN_DOCKER:
     # TODO maybe only do this if installed editable / not installed and being
     # used from within source tree? (would probably have to be a way to include
     # build in setup.py... and not sure there is)
@@ -110,6 +110,7 @@ nanopb_options_lines = [x for x in lines if len(x) > 0 and not x[0] == '#']
 
 hardware_dir_envvar = 'OLFACTOMETER_HARDWARE_DIR'
 default_hardware_envvar = 'OLFACTOMETER_DEFAULT_HARDWARE'
+_DEBUG = 'OLFACTOMETER_DEBUG' in os.environ
 
 def load_hardware_config(hardware_config=None, required=False):
     """Returns dict loaded from YAML hardware config or None if no config.
@@ -207,6 +208,7 @@ def in_windows():
     return os.name == 'nt'
 
 
+# TODO rename to preprocess_config_if_need or something
 def check_need_to_preprocess_config(config, hardware_config=None):
     # TODO update doc to indicate directory case if i'm going to support that
     """Returns input or new pre-processed config, if it input requests it.
@@ -225,7 +227,7 @@ def check_need_to_preprocess_config(config, hardware_config=None):
     # now, I'm just not supporting this case. Could manually run generators
     # in advance (maybe provide instructions for that? or **maybe** have
     # that be the norm?)
-    if in_docker:
+    if IN_DOCKER:
         # TODO after refactoring main/run to work with w/ `dict` config input
         # (rather than just files), could probably relax this restriction, and
         # just use a `dict` in docker case (there is still the issue of not
@@ -309,7 +311,7 @@ def check_need_to_preprocess_config(config, hardware_config=None):
             )
 
         generator_yaml_dict.update(hardware_yaml_dict)
-        
+
     generator = generator_yaml_dict['generator']
 
     if generator == 'basic':
@@ -471,7 +473,7 @@ def load_yaml(yaml_filelike, message=None):
 
 
 def load(config=None):
-    """Parses JSON/YAML file or dict into an AllRequiredData message object.
+    """Parses config for a single run into a AllRequiredData message object
 
     Args:
     config (str|dict|None): If `str`, path to JSON or YAML file, which
@@ -492,7 +494,7 @@ def load(config=None):
         stdin_str = sys.stdin.read()
 
         if len(stdin_str) == 0:
-            assert in_docker
+            assert IN_DOCKER
             raise IOError('you must use the -i flag with docker run')
 
         # TODO check output of yaml dumping w/ default_flow_style=True again.
@@ -569,7 +571,7 @@ def max_count(name):
 
 def validate_port(port):
     """Raises ValueError if port seems invalid.
-    
+
     Not currently intended to catch all possible invalid values, just some
     likely mistakes.
     """
@@ -583,7 +585,7 @@ def validate_port(port):
         raise ValueError('specify port after -p. currently this seems to be the'
             'config file path.'
         )
-    
+
     # TODO actually check against what ports the system could have somehow?
 
 
@@ -914,7 +916,7 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
         preprocessor flag in the sketch. will number messages so the Arduino
         side can check it is not missing any.
 
-    arduino_debug_prints (bool, default=False): if True, reads all bytes in 
+    arduino_debug_prints (bool, default=False): if True, reads all bytes in
         buffer before writing message num, to try to ensure the next byte we
         get back is just the message num.
     """
@@ -1336,6 +1338,37 @@ def number_of_trials(all_required_data):
     return len(all_required_data.pin_sequence.pin_groups)
 
 
+def time_config_will_take_s(all_required_data, print_=False):
+    """Returns time (in seconds) config will take to run.
+
+    Returns None if all_required_data.settings.follow_hardware_timing is True.
+    """
+    n_trials = number_of_trials(all_required_data)
+
+    if print_:
+        print(f'{n_trials} trials')
+
+    if not all_required_data.settings.follow_hardware_timing:
+        # TODO factor this out so i can calculate how long various trial structures
+        # would be without needing to try to run them (or even an arduino) (+ printing
+        # below)
+        one_trial_s = seconds_per_trial(all_required_data)
+        expected_duration_s = n_trials * one_trial_s
+
+        duration_str = format_duration_s(expected_duration_s)
+
+        if print_:
+            print(f'Will take {duration_str} ({expected_duration_s:.0f}s)')
+
+        return expected_duration_s
+
+    else:
+        if print_:
+            print('Can not compute duration because following hardware timing')
+
+        return None
+
+
 def curr_trial_index(start_time_s, config_or_trial_dur, n_trials=None):
     """Returns index of current trial via start time and config.
 
@@ -1365,6 +1398,24 @@ def get_trial_pins(pin_sequence, trial_index):
     return list(pin_sequence.pin_groups[trial_index].pins)
 
 
+def get_pins2odors(config_dict):
+    """Returns dict: int -> odor or None if not in config_dict
+    """
+    return config_dict.get('pins2odors')
+
+
+def print_pins2odors(config_dict, header=True):
+    pins2odors = get_pins2odors(config_dict)
+
+    # TODO TODO also print balances here (at least optionally) (both in
+    # single / multiple manifold cases). maybe visually separated somewhat.
+    # (need to parse config_dict again for that?)
+    if header:
+        print('Pins to connect odors to:')
+
+    for p, o in pins2odors.items():
+        print(f' {p}: {format_odor(o)}')
+
 # TODO add fn that takes a pin_sequence (or pinlist_at_each_trial equivalent),
 # and pins2odors, and prints it all nicely
 
@@ -1379,10 +1430,9 @@ def get_trial_pins(pin_sequence, trial_index):
 # of util.py from the cwd, if cwd=~/src/olfactometer) has changes not reflected
 # in the version of the installed `olf` script)
 baud_rate = None
-def run(config, port=None, fqbn=None, do_upload=False,
-    allow_version_mismatch=False, ignore_ack=False, try_parse=False,
-    timeout_s=2.0, pause_before_start=True, check_set_flows=False,
-    verbose=False, _first_run=True):
+def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
+    pause_before_start=True, check_set_flows=False, allow_version_mismatch=False,
+    ignore_ack=False, try_parse=False, verbose=False, _first_run=True):
     """Runs a single configuration file on the olfactometer.
 
     Args:
@@ -1460,9 +1510,7 @@ def run(config, port=None, fqbn=None, do_upload=False,
     # TODO maybe factor all this first_run stuff into its own fn and call before
     # first run() call in sequence case, so the first "Config file: ..." doesn't
     # have the warnings and baud rate between it and the rest (for consistency)?
-    if not _first_run:
-        assert baud_rate is not None
-    else:
+    if _first_run:
         if allow_version_mismatch:
             warnings.warn('allow_version_mismatch should only be used for '
                 'debugging!'
@@ -1529,20 +1577,7 @@ def run(config, port=None, fqbn=None, do_upload=False,
         )
         print()
 
-    # TODO maybe refactor so all these prints are also included in in
-    # --try-parse case?
-    n_trials = number_of_trials(all_required_data)
-    if not settings.follow_hardware_timing:
-        # TODO factor this out so i can calculate how long various trial structures
-        # would be without needing to try to run them (or even an arduino) (+ printing
-        # below)
-        one_trial_s = seconds_per_trial(all_required_data)
-        expected_duration_s = n_trials * one_trial_s
-
-        duration_str = format_duration_s(expected_duration_s)
-
-        print(f'{n_trials} trials')
-        print(f'Will take: {duration_str}')
+    expected_duration_s = time_config_will_take_s(all_required_data, print_=True)
 
     # It's a file in this case, and we are copying the file path to the clipboard.
     if type(config) is str:
@@ -1550,18 +1585,7 @@ def run(config, port=None, fqbn=None, do_upload=False,
         pyperclip.copy(config)
         print(f'Copied {config} to clipboard\n')
 
-    # TODO (low priority) maybe only print pins that differ relative to last
-    # pins2odors, in a sequence? or indicate those that are the same?
-    pins2odors = None
-    pins2odors_key = 'pins2odors'
-    if pins2odors_key in config_dict:
-        pins2odors = config_dict[pins2odors_key]
-
-        # TODO TODO also print balances here (at least optionally) (both in
-        # single / multiple manifold cases). maybe visually separated somewhat.
-        print('Pins to connect odors to:')
-        for p, o in pins2odors.items():
-            print(f' {p}: {format_odor(o)}')
+    print_pins2odors(config_dict)
 
     # TODO maybe have option to try to save clipboard before filling it w/ pyperclip and
     # here (just since we should have pasted by here), maybe fill w/ old contents?
@@ -1582,6 +1606,9 @@ def run(config, port=None, fqbn=None, do_upload=False,
         finish_str = expected_finish.strftime('%I:%M%p').lstrip('0')
         print(f'Will finish at: {finish_str}')
         #
+
+    pins2odors = get_pins2odors(config_dict)
+    n_trials = number_of_trials(all_required_data)
 
     # TODO TODO define some class that has its own context manager that maybe
     # essentially wraps the Serial one? (just so people don't need that much
@@ -1692,11 +1719,10 @@ def run(config, port=None, fqbn=None, do_upload=False,
                     #print('trial_idx:', trial_idx)
 
                     if flow_setpoints_sequence is not None:
-                        # TODO TODO TODO even if not verbose, should print
-                        # something if flow is anything other than either
-                        # default or initial flows when MFCs were turned on.
-                        # or just always. just fit in the same line? or one
-                        # line after?
+                        # TODO TODO even if not verbose, should print something if flow
+                        # is anything other than either default or initial flows when
+                        # MFCs were turned on.  or just always. just fit in the same
+                        # line? or one line after?
                         set_flow_setpoints(
                             port2flow_controller,
                             flow_setpoints_sequence[trial_idx],
@@ -1788,29 +1814,23 @@ def run(config, port=None, fqbn=None, do_upload=False,
             '''
 
 
-def main(config, hardware_config=None, _skip_config_preprocess_check=False,
-    **kwargs):
-    """
-    config (str|dict|None)
-    """
+# TODO maybe add a flag like verbose but just for this fn?
+# TODO maybe this should also call load and yield (all_required_data, config_dict)
+# (to avoid duplicating logic testing what type config is and branching on that)
+def config_iter(config, hardware_config=None, _skip_config_preprocess_check=False):
+    """Generates a sequences of config (str | dict), each as `run` input
 
-    # TODO TODO TODO add arg for excluding pins (e.g. for running basic.py
-    # configured w/ tom_olfactometer_configs/one_odor.yaml after already hooking
-    # up odors from the same generator configured w/
-    # ""/glomeruli_diagnostics.yaml). accept either yaml file w/ pins2odors
-    # (or just pins in pin_sequence?) or just a comma separated list of pins on
-    # the command line. thread through to command line interfaces.
-    # and should i have an option for just automatically finding the last
-    # generated thing and excluding the pins in that? might want to set up an
-    # env var for output directory first...
-
-    if in_docker and config is not None:
+    config (str|dict|None): str can be a path to a config file or a directory containing
+        a sequence of them (must be numbered following convention)
+    """
+    if IN_DOCKER and config is not None:
         # TODO reword to be inclusive of directory case?
         raise ValueError('passing filenames to docker currently not supported. '
             'instead, redirect stdin from that file. see README for examples.'
         )
 
     if config is None:
+        # TODO probably still want to fail if 'generator' key *is* there in this case
         warnings.warn('setting _skip_config_preprocess_check=True as '
             'check_need_to_preprocess_config currently does not support '
             'case where config is read from stdin.'
@@ -1829,17 +1849,19 @@ def main(config, hardware_config=None, _skip_config_preprocess_check=False,
     # (maybe have the flag also just print the YAML(s) the generator creates
     # then?)
     if not _skip_config_preprocess_check:
-        # TODO TODO TODO fix so config==None (->stdin input) (used in docker
-        # case) works with this too.
+        # TODO TODO fix so config==None (->stdin input) (used in docker case) works with
+        # this too.
         config = check_need_to_preprocess_config(config,
             hardware_config=hardware_config
         )
 
-    
+    # TODO maybe refactor so that run no longer takes None for config (-> using
+    # sys.stdin in load call early in run), or even only take a dict. might make it
+    # easier to compose with other functions...
     if config is None or type(config) is dict or (
         type(config) is str and isfile(config)):
 
-        run(config, **kwargs)
+        yield config
 
     elif type(config) is str and isdir(config):
         config_files = glob.glob(join(config, '*'))
@@ -1859,11 +1881,28 @@ def main(config, hardware_config=None, _skip_config_preprocess_check=False,
                     'did not have a number right before the extension, to '
                     'indicate order. exiting.'
                 )
+
         config_files = [f for _, f in sorted(zip(order_nums, config_files),
             key=lambda x: x[0]
         )]
 
-        first_run = True
+        if len(config_files) > 1:
+            all_configs_pins2odors_delim = '#' * 80
+
+            print(all_configs_pins2odors_delim)
+
+            # could refactor so load only happens once but whatever
+            for i, config_file in enumerate(config_files):
+
+                all_required_data, config_dict = load(config_file)
+
+                print(f'{config_file} ({i+1}/{len(config_files)})')
+                print_pins2odors(config_dict, header=False)
+                print()
+
+            print(all_configs_pins2odors_delim)
+            print()
+
         for i, config_file in enumerate(config_files):
             # TODO maybe (in addition to some abstractions / standards for
             # formatting odors in trials (rather than pins)) also have some
@@ -1872,13 +1911,10 @@ def main(config, hardware_config=None, _skip_config_preprocess_check=False,
             # pair conc grid experiments)?
             print(f'Config file: {config_file} ({i+1}/{len(config_files)})')
 
-            run(config_file, _first_run=first_run, **kwargs)
+            yield config_file
 
             if i < len(config_files) - 1:
                 print()
-
-            if first_run:
-                first_run = False
 
     else:
         # TODO TODO does this break docker stdin based config specification? fix
@@ -1886,6 +1922,57 @@ def main(config, hardware_config=None, _skip_config_preprocess_check=False,
         raise ValueError(f'config type {type(config)} not recognized. must be '
             'str path to file/directory, dict, or None to use stdin.'
         )
+
+
+def main(config, hardware_config=None, _skip_config_preprocess_check=False, **kwargs):
+    """Runs one or several configuration inputs on the olfactometer.
+
+    config (str|dict|None): str can be a path to a config file or a directory containing
+        a sequence of them (must be numbered following convention)
+    """
+
+    # TODO add arg for excluding pins (e.g. for running basic.py configured w/
+    # tom_olfactometer_configs/one_odor.yaml after already hooking up odors from the
+    # same generator configured w/ ""/glomeruli_diagnostics.yaml). accept either yaml
+    # file w/ pins2odors (or just pins in pin_sequence?) or just a comma separated list
+    # of pins on the command line. thread through to command line interfaces.  and
+    # should i have an option for just automatically finding the last generated thing
+    # and excluding the pins in that? might want to set up an env var for output
+    # directory first...
+
+    first_run = True
+
+    for single_run_config in config_iter(config, hardware_config=hardware_config,
+        _skip_config_preprocess_check=False):
+
+        run(single_run_config, _first_run=first_run, **kwargs)
+
+        if first_run:
+            first_run = False
+
+
+def argparse_config_args(parser=None, config_path=True, hardware=True):
+    if parser is None:
+        parser = argparse.ArgumentParser()
+
+    if config_path:
+        parser.add_argument('config_path', type=str, nargs='?', default=None,
+            help='.json/.yaml file containing all required data. see `load` '
+            'function. reads config from stdin if not passed.'
+        )
+
+    if hardware:
+        # TODO document OLFACTOMETER_DEFAULT_HARDWARE, and interactions with the
+        # same keys already present in some YAML
+        parser.add_argument('-r', '--hardware', action='store', default=None,
+            dest='hardware_config',
+            help='[path to / prefix of] config specifying available valve pins and'
+            'other important pins for a particular physical olfactometer. config '
+            f'must be under {hardware_dir_envvar} to refer by prefix. see also '
+            f'{default_hardware_envvar}.'
+        )
+
+    return parser
 
 
 # TODO maybe move both of these argparse fns to cli_entry_points.py.
@@ -1922,7 +2009,7 @@ def argparse_arduino_id_args(parser=None):
     return parser
 
 
-def argparse_run_args(parser=None):
+def argparse_run_args(parser=None, **kwargs):
     """Returns argparse.ArgumentParser with args shared by [main/valve_test]_cli
 
     If parser is passed in, arguments will be added to that parser. Otherwise,
@@ -1931,31 +2018,44 @@ def argparse_run_args(parser=None):
     if parser is None:
         parser = argparse.ArgumentParser()
 
-    parser.add_argument('-u', '--upload', action='store_true', default=False,
+    argparse_config_args(parser, **kwargs)
+
+    argparse_arduino_id_args(parser)
+
+    parser.add_argument('-u', '--upload', action='store_true', dest='do_upload',
         help='also uploads Arduino code before running'
     )
-    argparse_arduino_id_args(parser)
-    # TODO TODO uncomment if i restore upload.version_str to a working state
-    '''
-    parser.add_argument('-a', '--allow-version-mismatch', action='store_true',
-        default=False, help='unless passed, git hash of arduino code will be '
-        'checked against git hash of python code, and it will not let you '
-        'proceed unless they match. re-upload arduino code with clean '
-        '"git status" to fix mismatch without this flag.'
-    )
-    '''
-    # TODO document OLFACTOMETER_DEFAULT_HARDWARE, and interactions with the
-    # same keys already present in some YAML
-    parser.add_argument('-r', '--hardware', action='store', default=None,
-        help='[path to / prefix of] config specifying available valve pins and'
-        'other important pins for a particular physical olfactometer. config '
-        f'must be under {hardware_dir_envvar} to refer by prefix. see also '
-        f'{default_hardware_envvar}.'
-    )
-    parser.add_argument('-y', '--no-wait', action='store_true', default=False,
+    parser.add_argument('-y', '--no-wait', action='store_false',
+        dest='pause_before_start',
         help='do not wait for user to press <Enter> before starting'
     )
-    parser.add_argument('-v', '--verbose', action='store_true', default=False)
+    parser.add_argument('-v', '--verbose', action='store_true')
+
+    if _DEBUG:
+        # TODO TODO uncomment if i restore upload.version_str to a working state
+        '''
+        parser.add_argument('-a', '--allow-version-mismatch', action='store_true',
+            default=False, help='unless passed, git hash of arduino code will be '
+            'checked against git hash of python code, and it will not let you '
+            'proceed unless they match. re-upload arduino code with clean '
+            '"git status" to fix mismatch without this flag.'
+        )
+        '''
 
     return parser
+
+
+def parse_args(parser):
+    args = parser.parse_args()
+    return vars(args)
+
+
+def parse_config_args(parser):
+    """Returns config_path, kwargs
+
+    Assumes parser has config_path positional and --hardware arguments at least
+    """
+    kwargs = parse_args(parser)
+    config_path = kwargs.pop('config_path')
+    return config_path, kwargs
 

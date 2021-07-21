@@ -2,72 +2,51 @@
 
 import argparse
 
-from olfactometer.util import (argparse_run_args, argparse_arduino_id_args,
-    load_hardware_config, main
-)
+from olfactometer import util
+from olfactometer.util import main, _DEBUG
 from olfactometer.generators import common
 from olfactometer.upload import main as upload_main
 from olfactometer.upload import version_str as _version_str
 
 
 def main_cli():
-    parser = argparse_run_args()
+    parser = util.argparse_run_args()
 
-    parser.add_argument('-t', '--try-parse', action='store_true', default=False,
-        help='exit after attempting to parse config. no need for a connected '
-        'Arduino.'
-    )
     parser.add_argument('-c', '--check-set-flows', action='store_true',
         default=False, help='query flow controllers after each change in '
         'setpoints to see the change seems to have been applied. only for '
         'debugging experiments involving flow controllers. does NOT check '
         'ACHIEVED flow rates.'
     )
-    parser.add_argument('-k', '--ignore-ack', action='store_true',
-        default=False, help='ignores acknowledgement message #s arduino sends. '
-        'makes viewing all debug prints FROM THE FIRMWARE easier, as it '
-        'prevents the prints from interfering with receipt of the message '
-        'numbers.'
-    )
-    parser.add_argument('config_path', type=str, nargs='?', default=None,
-        help='.json/.yaml file containing all required data. see `load` '
-        'function. reads config from stdin if not passed.'
-    )
-    # TODO TODO add an arg to shorten all valve OFF periods to a fixed value /
-    # value scaled from original / value derived by subtracting from original
-    # (something like --shorten-offs-by/--override-off-secs), for testing
-    # stimulus programs quickly. warn that it should only be used for testing.
-    args = parser.parse_args()
+
+    if _DEBUG:
+        parser.add_argument('-t', '--try-parse', action='store_true', default=False,
+            help='exit after attempting to parse config. no need for a connected '
+            'Arduino.'
+        )
+        parser.add_argument('-k', '--ignore-ack', action='store_true',
+            default=False, help='ignores acknowledgement message #s arduino sends. '
+            'makes viewing all debug prints FROM THE FIRMWARE easier, as it '
+            'prevents the prints from interfering with receipt of the message '
+            'numbers.'
+        )
+        # TODO TODO add an arg to shorten all valve OFF periods to a fixed value /
+        # value scaled from original / value derived by subtracting from original
+        # (something like --shorten-offs-by/--override-off-secs), for testing
+        # stimulus programs quickly. warn that it should only be used for testing.
 
     # TODO maybe add arg to specify generated YAML w/ pins2odors to use?
     # (for subsequent generation of a subset of odors, for testing?)
     # or maybe just make some easier way of quickly doing an experiment (how to
     # specify timing information?) w/ one odor
 
-    do_upload = args.upload
-    port = args.port
-    fqbn = args.fqbn
-    # TODO uncomment if i resolve version_str issue
-    #allow_version_mismatch = args.allow_version_mismatch
-    check_set_flows = args.check_set_flows
-    try_parse = args.try_parse
-    ignore_ack = args.ignore_ack
-    hardware_config = args.hardware
-    pause_before_start = not args.no_wait
-    verbose = args.verbose
-    config_path = args.config_path
+    config_path, kwargs = util.parse_config_args(parser)
 
-    main(config_path, port=port, fqbn=fqbn, do_upload=do_upload,
-        # TODO add back if i resolve version_str issue
-        #allow_version_mismatch=allow_version_mismatch,
-        ignore_ack=ignore_ack, try_parse=try_parse,
-        hardware_config=hardware_config, pause_before_start=pause_before_start,
-        check_set_flows=check_set_flows, verbose=verbose
-    )
-    
+    main(config_path, **kwargs)
+
 
 def valve_test_cli():
-    parser = argparse_run_args()
+    parser = util.argparse_run_args(config_path=False)
 
     default_n_repeats = 3
     bal_default_n_repeats = 1
@@ -92,7 +71,11 @@ def valve_test_cli():
         help='how many seconds between valve actuations (default: '
         f'{default_off_s:.1f})'
     )
-    parser.add_argument('-b', '--balance', action='store_true',
+
+    # Balance pins are currently part of required (enforced by
+    # `get_available_pins`) hardware definition, so we don't need to worry about
+    # checking they are defined, in the case where this is true.
+    parser.add_argument('-b', '--balance', action='store_true', dest='use_balances',
         help='use balance valves as during odor presentation. otherwise, '
         'they are pulsed just like any other valve, for listening for '
         'valve clicks. use this option to test flow (e.g. with outputs bubbling'
@@ -100,31 +83,23 @@ def valve_test_cli():
         f'{bal_default_on_s:.1f}/{bal_default_off_s} in this case. default '
         f'n_repeats becomes {default_n_repeats}.'
     )
+
     # TODO maybe it should support -b somehow? right now it can't really, cause
     # not using hardware def at all here
-    parser.add_argument('-i', '--pins', type=str, default=None,
+    parser.add_argument('-i', '--pins', type=str, default=None, dest='cli_pins',
         help='if passed, will use these pins (comma separated) rather than '
         'hardware definition. tested in order passed.'
     )
-    args = parser.parse_args()
 
-    do_upload = args.upload
-    port = args.port
-    fqbn = args.fqbn
-    # TODO uncomment if i resolve version_str issue
-    #allow_version_mismatch = args.allow_version_mismatch
-    hardware_config = args.hardware
-    pause_before_start = not args.no_wait
-    verbose = args.verbose
+    kwargs = util.parse_args(parser)
 
-    n_repeats = args.n_repeats
-    on_secs = args.on_secs
-    off_secs = args.off_secs
-    # Balance pins are currently part of required (enforced by
-    # `get_available_pins`) hardware definition, so we don't need to worry about
-    # checking they are defined, in the case where this is true.
-    use_balances = args.balance
-    cli_pins = args.pins
+    hardware_config = kwargs.pop('hardware_config')
+    on_secs = kwargs.pop('on_secs')
+    off_secs = kwargs.pop('off_secs')
+    n_repeats = kwargs.pop('n_repeats')
+    use_balances = kwargs.pop('use_balances')
+    cli_pins = kwargs.pop('cli_pins')
+
     if cli_pins is not None:
         if use_balances:
             raise NotImplementedError('--pins and --balance can not currently '
@@ -158,7 +133,7 @@ def valve_test_cli():
     else:
         post_pulse_s = off_secs
 
-    config_data = load_hardware_config(hardware_config, required=True)
+    config_data = util.load_hardware_config(hardware_config, required=True)
     common.validate_hardware_dict(config_data)
 
     # This is currently what *would* set 'balance_pin', if optional
@@ -210,20 +185,15 @@ def valve_test_cli():
 
     common.add_pinlist(pinlist_at_each_trial, generated_config_dict)
 
-    main(generated_config_dict, port=port, fqbn=fqbn, do_upload=do_upload,
-        hardware_config=None, pause_before_start=pause_before_start,
-        verbose=verbose, _skip_config_preprocess_check=True
-        # TODO add back if i resolve version_str issue
-        #, allow_version_mismatch=allow_version_mismatch
-    )
+    main(generated_config_dict, _skip_config_preprocess_check=True, **kwargs)
 
 
 def upload_cli():
     parser = argparse.ArgumentParser()
 
-    argparse_arduino_id_args(parser)
+    util.argparse_arduino_id_args(parser)
 
-    parser.add_argument('-d', '--dry-run', action='store_true', default=False,
+    parser.add_argument('-d', '--dry-run', action='store_true',
         help='do not actually upload. just compile.'
     )
     parser.add_argument('-s', '--show-properties', action='store_true',
@@ -241,24 +211,58 @@ def upload_cli():
         ' slightly.'
     )
     parser.add_argument('-n', '--no-symlink', action='store_true',
-        default=False, help='copy files instead of symlinking them, when '
-        'preparing Arduino sketch and libraries for compilation. ignored on '
-        'Windows, where files are always copied rather than symlinked.'
+        help='copy files instead of symlinking them, when preparing Arduino sketch and'
+        'libraries for compilation. ignored on Windows, where files are always copied'
+        ' rather than symlinked.'
     )
-    parser.add_argument('-v', '--verbose', action='store_true', default=False,
+    parser.add_argument('-v', '--verbose', action='store_true',
         help='make arduino-cli compilation verbose'
     )
-    args = parser.parse_args()
+    kwargs = util.parse_args(parser)
 
-    upload_main(
-        port=args.port,
-        fqbn=args.fqbn,
-        dry_run=args.dry_run,
-        show_properties=args.show_properties,
-        arduino_debug_prints=args.arduino_debug_prints,
-        build_root=args.build_root,
-        verbose=args.verbose
-    )
+    upload_main(**kwargs)
+
+
+def print_config_time_cli():
+    parser = util.argparse_config_args()
+    parser.add_argument('-v', '--verbose', action='store_true')
+
+    config_path, kwargs = util.parse_config_args(parser)
+
+    n_config = 0
+    total_s = 0
+
+    for single_run_config in util.config_iter(config_path, **kwargs):
+
+        all_required_data, config_dict = util.load(single_run_config)
+
+        time_s = util.time_config_will_take_s(all_required_data, print_=True)
+        total_s += time_s
+
+        n_config += 1
+
+    if n_config > 1:
+        print(f'\nTotal: {util.format_duration_s(total_s)}')
+
+
+def show_pins2odors_cli():
+    parser = util.argparse_config_args(hardware=False)
+
+    parser.add_argument('-v', '--verbose', action='store_true')
+
+    config_path, kwargs = util.parse_config_args(parser)
+
+    for single_run_config in util.config_iter(config_path,
+        _skip_config_preprocess_check=True, **kwargs):
+
+        _, config_dict = util.load(single_run_config)
+
+        if 'generator' in config_dict:
+            raise ValueError('Do not use this (directly) with config that use '
+                'generators. Instead, pass generator output or manually created config.'
+            )
+
+        util.print_pins2odors(config_dict)
 
 
 def version_str():
