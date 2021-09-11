@@ -16,6 +16,7 @@ import math
 import argparse
 from pprint import pprint
 import atexit
+import importlib.util
 
 import serial
 # TODO use to make functions for printing vid/pid (or other unique ids for usb
@@ -209,7 +210,7 @@ def in_windows():
 
 
 # TODO rename to preprocess_config_if_need or something
-def check_need_to_preprocess_config(config, hardware_config=None):
+def check_need_to_preprocess_config(config, hardware_config=None, verbose=False):
     # TODO update doc to indicate directory case if i'm going to support that
     """Returns input or new pre-processed config, if it input requests it.
 
@@ -295,6 +296,11 @@ def check_need_to_preprocess_config(config, hardware_config=None):
 
         return config
 
+    if verbose:
+        print('generator_yaml_dict:')
+        pprint(generator_yaml_dict)
+        print()
+
     hardware_yaml_dict = load_hardware_config(hardware_config)
 
     if hardware_yaml_dict is not None:
@@ -310,6 +316,11 @@ def check_need_to_preprocess_config(config, hardware_config=None):
                 'this is invalid when hardware_config is specified.'
             )
 
+        if verbose:
+            print('hardware_yaml_dict:')
+            pprint(hardware_yaml_dict)
+            print()
+
         generator_yaml_dict.update(hardware_yaml_dict)
 
     generator = generator_yaml_dict['generator']
@@ -319,6 +330,14 @@ def check_need_to_preprocess_config(config, hardware_config=None):
 
     elif generator == 'pair_concentration_grid':
         generator_fn = pair_concentration_grid.make_config_dict
+
+    elif generator.endswith('.py'):
+
+        spec = importlib.util.spec_from_file_location('generator', generator)
+        generator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(generator)
+
+        generator_fn = generator.make_config_dict
 
     else:
         raise NotImplementedError(f"generator '{generator}' not supported")
@@ -1833,7 +1852,8 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
 # TODO maybe add a flag like verbose but just for this fn?
 # TODO maybe this should also call load and yield (all_required_data, config_dict)
 # (to avoid duplicating logic testing what type config is and branching on that)
-def config_iter(config, hardware_config=None, _skip_config_preprocess_check=False):
+def config_iter(config, hardware_config=None, _skip_config_preprocess_check=False,
+    verbose=False):
     """Generates a sequences of config (str | dict), each as `run` input
 
     config (str|dict|None): str can be a path to a config file or a directory containing
@@ -1868,7 +1888,7 @@ def config_iter(config, hardware_config=None, _skip_config_preprocess_check=Fals
         # TODO TODO fix so config==None (->stdin input) (used in docker case) works with
         # this too.
         config = check_need_to_preprocess_config(config,
-            hardware_config=hardware_config
+            hardware_config=hardware_config, verbose=verbose
         )
 
     # TODO maybe refactor so that run no longer takes None for config (-> using
@@ -1940,7 +1960,8 @@ def config_iter(config, hardware_config=None, _skip_config_preprocess_check=Fals
         )
 
 
-def main(config, hardware_config=None, _skip_config_preprocess_check=False, **kwargs):
+def main(config, hardware_config=None, _skip_config_preprocess_check=False,
+    verbose=False, **kwargs):
     """Runs one or several configuration inputs on the olfactometer.
 
     config (str|dict|None): str can be a path to a config file or a directory containing
@@ -1959,9 +1980,9 @@ def main(config, hardware_config=None, _skip_config_preprocess_check=False, **kw
     first_run = True
 
     for single_run_config in config_iter(config, hardware_config=hardware_config,
-        _skip_config_preprocess_check=False):
+        verbose=verbose, _skip_config_preprocess_check=False):
 
-        run(single_run_config, _first_run=first_run, **kwargs)
+        run(single_run_config, _first_run=first_run, verbose=verbose, **kwargs)
 
         if first_run:
             first_run = False
