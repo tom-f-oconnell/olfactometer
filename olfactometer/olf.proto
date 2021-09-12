@@ -14,6 +14,12 @@ message PulseTiming {
     uint32 post_pulse_us = 3;
     // TODO cf w/ PulseControl implementation below
     //optional bool follow_hardware_timing = 4;
+
+    // TODO verify these are indeed optional, and everything behaves as before if these
+    // are at their default settings
+    // If not specified, pulse_us should just be one continuous HIGH period.
+    uint32 pulse_train_on_us = 4;
+    uint32 pulse_train_off_us = 5;
 }
 
 // TODO maybe also pass expected pulse sizes + tolerances in here, so they can

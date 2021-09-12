@@ -72,6 +72,17 @@ def parse_pulse_timing_s_to_us(data, generated_config_dict=None):
         'pulse_us': pulse_us,
         'post_pulse_us': post_pulse_us
     }
+
+    if 'pulse_train_on_s' in data or 'pulse_train_off_s' in data:
+        pulse_train_on_s = float(data['pulse_train_on_s'])
+        pulse_train_off_s = float(data['pulse_train_off_s'])
+
+        pulse_train_on_us = int(round(pulse_train_on_s * us_per_s))
+        pulse_train_off_us = int(round(pulse_train_off_s * us_per_s))
+
+        settings_dict[timing_key]['pulse_train_on_us'] = pulse_train_on_us
+        settings_dict[timing_key]['pulse_train_off_us'] = pulse_train_off_us
+
     return generated_config_dict
 
 
@@ -115,6 +126,8 @@ def parse_common_settings(data, generated_config_dict=None):
     - 'pre_pulse_s'
     - 'pulse_s'
     - 'post_pulse_s'
+
+    If 'pulse_train_[on|off]_s' are present, also handles these.
 
     Returns the modified / created generated_config_dict. Creates if not passed.
     """

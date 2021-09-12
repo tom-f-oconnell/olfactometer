@@ -1348,6 +1348,8 @@ def seconds_per_trial(all_required_data):
         raise ValueError('follow_hardware_timing case not supported')
 
     timing = settings.timing
+    # TODO also calculate (expected) overrun of pulse_us depending on pulse train
+    # settings
     return (timing.pre_pulse_us + timing.pulse_us + timing.post_pulse_us) / 1e6
 
 
@@ -1479,6 +1481,9 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         timing.pre_pulse_us = int(round(timing.pre_pulse_us / speed_factor))
         timing.pulse_us = int(round(timing.pulse_us / speed_factor))
         timing.post_pulse_us = int(round(timing.post_pulse_us / speed_factor))
+
+        timing.pulse_train_on_us = int(round(timing.pulse_train_on_us / speed_factor))
+        timing.pulse_train_off_us = int(round(timing.pulse_train_off_us / speed_factor))
 
     settings = all_required_data.settings
     pin_sequence = all_required_data.pin_sequence

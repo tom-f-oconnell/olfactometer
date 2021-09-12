@@ -319,6 +319,7 @@ void finish() {
 
 // TODO make sense to be inline? i was just hoping to reduce function call
 // overhead, and it's presumed timing impact
+// TODO TODO why does this function need global state again? does it?
 // I'm pretty sure this function is wraparound-safe.
 unsigned long last_change_us = micros();
 inline void busy_wait_us(unsigned long interval_us) {
@@ -340,6 +341,13 @@ void run_sequence() {
     unsigned long pre_pulse_us = settings.control.timing.pre_pulse_us;
     unsigned long pulse_us = settings.control.timing.pulse_us;
     unsigned long post_pulse_us = settings.control.timing.post_pulse_us;
+
+    // Optional. Should default to 0 if not specified in Python.
+    unsigned long pulse_train_on_us = settings.control.timing.pulse_train_on_us;
+    unsigned long pulse_train_off_us = settings.control.timing.pulse_train_off_us;
+
+    bool using_pulse_train = (pulse_train_on_us > 0) && (pulse_train_off_us > 0);
+
     #ifdef DEBUG_PRINTS
     // TODO just do some tests that are near uint32 max (unsigned long) to check
     // i'm not messing some implicit conversion
@@ -368,7 +376,16 @@ void run_sequence() {
         }
         digital_write_pin_group(&group, HIGH);
 
-        busy_wait_us(pulse_us);
+        if (using_pulse_train) {
+            unsigned long pulse_start_us = micros();
+            // May often exceed pulse_us by up to about one of these cycles.
+            while (micros() - pulse_start_us < pulse_us) {
+                busy_wait_us(pulse_train_on_us);
+                busy_wait_us(pulse_train_off_us);
+            }
+        } else {
+            busy_wait_us(pulse_us);
+        }
 
         if (balance_pin) {
             digitalWrite(balance_pin, LOW);
