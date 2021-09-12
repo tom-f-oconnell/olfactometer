@@ -226,6 +226,17 @@ inline void digital_write_pin_group(PinGroup *group, bool state) {
     }
 }
 
+inline void digital_write_pin_group_balance_and_timing(PinGroup *group, bool state) {
+    digital_write_pin_group(group, state);
+
+    if (balance_pin) {
+        digitalWrite(balance_pin, state);
+    }
+    if (timing_output_pin) {
+        digitalWrite(timing_output_pin, state);
+    }
+}
+
 volatile uint8_t pin_seq_idx = 0;
 volatile bool isr_err = false;
 // TODO does this need to be volatile if ONLY the ISR uses it?
@@ -275,14 +286,9 @@ void external_timing_isr() {
     // (but maybe since pin_seq is only read before interrupts are enabled
     // and not updated again until after, it's actually ok??)
     PinGroup group = pin_seq.pin_groups[pin_seq_idx];
-    digital_write_pin_group(&group, curr_state);
 
-    if (balance_pin) {
-        digitalWrite(balance_pin, curr_state);
-    }
-    if (timing_output_pin) {
-        digitalWrite(timing_output_pin, curr_state);
-    }
+    digital_write_pin_group_balance_and_timing(&group, curr_state);
+
     if (curr_state == LOW) {
         pin_seq_idx++;
     }
@@ -368,32 +374,23 @@ void run_sequence() {
 
         busy_wait_us(pre_pulse_us);
 
-        if (balance_pin) {
-            digitalWrite(balance_pin, HIGH);
-        }
-        if (timing_output_pin) {
-            digitalWrite(timing_output_pin, HIGH);
-        }
-        digital_write_pin_group(&group, HIGH);
-
         if (using_pulse_train) {
             unsigned long pulse_start_us = micros();
             // May often exceed pulse_us by up to about one of these cycles.
             while (micros() - pulse_start_us < pulse_us) {
+                digital_write_pin_group_balance_and_timing(&group, HIGH);
                 busy_wait_us(pulse_train_on_us);
+                // TODO modify so that if pulse_us would finish be the time we would
+                // switch high again, this is skipped (so that the total trial length is
+                // what you'd expect more often)
+                digital_write_pin_group_balance_and_timing(&group, LOW);
                 busy_wait_us(pulse_train_off_us);
             }
         } else {
+            digital_write_pin_group_balance_and_timing(&group, HIGH);
             busy_wait_us(pulse_us);
+            digital_write_pin_group_balance_and_timing(&group, LOW);
         }
-
-        if (balance_pin) {
-            digitalWrite(balance_pin, LOW);
-        }
-        if (timing_output_pin) {
-            digitalWrite(timing_output_pin, LOW);
-        }
-        digital_write_pin_group(&group, LOW);
 
         busy_wait_us(post_pulse_us);
     }
