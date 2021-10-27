@@ -12,7 +12,7 @@ PinGroup.pins int_size:IS_8
 # (excluding pins managed independently, like `balance_pin` and similar).
 # With this settings, the pins in each group will be decoded into a fixed length
 # array by default, rather than needing a callback defined.
-PinGroup.pins max_count:5
+PinGroup.pins max_count:6
 
 # TODO some way to make this platform dependent?
 # TODO maybe just leave this to command line args to nanopb generator?
