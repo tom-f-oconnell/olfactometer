@@ -142,7 +142,7 @@ pip install .
 4. Extract and copy to `C:\Program Files\arduino-cli`, so that directly inside
    this new folder there is the `arduino-cli.exe` from the ZIP file.
 
-5. Add `C:Program Files\arduino-cli` to your `Path` environment variable, by
+5. Add `C:\Program Files\arduino-cli` to your `Path` environment variable, by
    pressing the Windows key, searching for "environment variable", clicking the
    result, and then clicking the `Environment Variables...` button at the
    bottom of the window that pops up. In the "User variables for
