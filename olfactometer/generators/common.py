@@ -310,7 +310,7 @@ def get_available_pins(data, generated_config_dict=None):
 # might not (currently) exist one such function that has access to all of the
 # necessary data at once though, which might be necessary for e.g. the non-valve
 # / valve overlap check
-def validate_hardware_dict(hardware_dict, allow_unknown_keys=False):
+def validate_hardware_dict(hardware_dict, allow_unknown_keys=True):
     """Raises [Assertion/Value]Error if dict from hardware YAML is invalid.
 
     If `allow_unknown_keys` is `True` (`False` by default), no error will be

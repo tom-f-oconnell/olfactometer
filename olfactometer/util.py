@@ -325,6 +325,7 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
 
     generator = generator_yaml_dict['generator']
 
+    # TODO enumerate modules under generators/ that have a make_config_dict fn?
     if generator == 'basic':
         generator_fn = basic.make_config_dict
 
