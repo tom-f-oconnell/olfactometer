@@ -35,6 +35,8 @@ setup(
         'alicat',
 
         'pyperclip',
+
+        'appdirs',
     ],
     # This just duplicates what's in test_requirements.txt, because apparently
     # pip doesn't actually provide any way to install these...
@@ -50,6 +52,9 @@ setup(
             'olf=olfactometer:main_cli',
 
             'olf-upload=olfactometer:upload_cli',
+
+            'olf-retry=olfactometer:retry_last_attempted_cli',
+            'olf-lastrun=olfactometer:get_last_attempted_cli',
 
             'olf-test-valves=olfactometer:valve_test_cli',
             'olf-one-valve=olfactometer:one_valve_cli',

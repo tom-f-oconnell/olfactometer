@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 
+"""
+Every function in this file should be a CLI entrypoint (referenced in setup.py)
+"""
+
 import argparse
+
+import pyperclip
 
 from olfactometer import util
 from olfactometer.util import main, _DEBUG
@@ -9,8 +15,12 @@ from olfactometer.upload import main as upload_main
 from olfactometer.upload import version_str as _version_str
 
 
-def main_cli():
-    parser = util.argparse_run_args()
+def main_cli(config_path=None):
+    """
+    Args:
+        config_path: None or path to config file to run
+    """
+    parser = util.argparse_run_args(config_path=True if config_path is None else False)
 
     parser.add_argument('-c', '--check-set-flows', action='store_true',
         default=False, help='query flow controllers after each change in '
@@ -39,9 +49,38 @@ def main_cli():
     # or maybe just make some easier way of quickly doing an experiment (how to
     # specify timing information?) w/ one odor
 
-    config_path, kwargs = util.parse_config_args(parser)
+    cli_config_path, kwargs = util.parse_config_args(parser,
+        require_config_path=True if config_path is None else False
+    )
+
+    if config_path is None:
+        config_path = cli_config_path
 
     main(config_path, **kwargs)
+
+
+def get_last_attempted_cli(copy=True):
+    config_path, abs_config_path = util.get_last_attempted()
+
+    print(f'Last attempted config: {config_path}', end='')
+    if copy:
+        pyperclip.copy(config_path)
+        print(' (copied to clipboard)')
+    else:
+        print()
+
+    print(f'Absolute path: {abs_config_path}')
+
+    return config_path, abs_config_path
+
+
+def retry_last_attempted_cli():
+    config_path, abs_config_path = get_last_attempted_cli(copy=False)
+    print()
+    # i was originally wanted to use abs path here, to be able to run from anywhere, but
+    # it makes what gets copied to clipboard / printed inconsistent w/ what we'd have on
+    # first run
+    main_cli(config_path=config_path)
 
 
 def valve_test_cli():

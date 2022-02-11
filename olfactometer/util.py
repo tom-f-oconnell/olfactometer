@@ -17,7 +17,13 @@ import argparse
 from pprint import pprint
 import atexit
 import importlib.util
+from pathlib import Path
 
+from alicat import FlowController
+import appdirs
+# TODO try to find a way of accessing this type without any prefix '_'s
+from google.protobuf.internal.encoder import _VarintBytes
+from google.protobuf import json_format, pyext
 import serial
 # TODO use to make functions for printing vid/pid (or other unique ids for usb
 # devices), which can be used to reference specific MFCs / arduinos in config
@@ -27,12 +33,8 @@ import serial
 # TODO maybe also use whichever unique USB ID to configure a expected ID, so
 # that if the wrong arduino is connected it can be detected?
 from serial.tools import list_ports
-# TODO try to find a way of accessing this type without any prefix '_'s
-from google.protobuf.internal.encoder import _VarintBytes
-from google.protobuf import json_format, pyext
-import yaml
-from alicat import FlowController
 import pyperclip
+import yaml
 
 from olfactometer import upload
 from olfactometer.generators import common, basic, pair_concentration_grid
@@ -1448,6 +1450,58 @@ def print_pins2odors(config_dict, header=True, **format_odor_kwargs):
 # and pins2odors, and prints it all nicely
 
 
+def get_last_attempted_cache_fname():
+    """Returns a Path object for storing last attempted config file (for re-running)
+    """
+    app_name = 'olf'
+    app_author = 'tom-f-oconnell'
+    app_data_dir = Path(appdirs.user_data_dir(app_name, app_author))
+    last_attempted_cache_fname = app_data_dir / 'last_attempted_config_filename'
+    return last_attempted_cache_fname
+
+
+def get_last_attempted():
+    """Returns relative and absolute paths to last attempted config file.
+
+    Former is relative to where it was originally generated.
+
+    Raises IOError if no record of past attempted config files.
+    """
+    if IN_DOCKER:
+        raise RuntimeError('can not get last attempted config file in Docker')
+
+    last_attempted_cache_fname = get_last_attempted_cache_fname()
+
+    if not last_attempted_cache_fname.exists():
+        raise IOError('no record of previously attempted config file!')
+
+    lines = last_attempted_cache_fname.read_text().splitlines()
+    assert len(lines) == 2, 'malformed file storing last attempted config'
+    relative_path, abs_path = lines
+
+    return relative_path, abs_path
+
+
+def write_last_attempted_config_file(config_fname) -> None:
+    """
+    Writes relative and absolute paths to config_fname on separate lines of file
+    returned by get_last_attempted_cache_fname()
+    """
+    if IN_DOCKER:
+        warnings.warn('could not write last attempted config filename because in '
+            'Docker'
+        )
+        return
+
+    last_attempted_cache_fname = get_last_attempted_cache_fname()
+
+    app_data_dir = last_attempted_cache_fname.parents[0]
+    app_data_dir.mkdir(parents=True, exist_ok=True)
+
+    cache_contents = config_fname + os.linesep + str(Path(config_fname).resolve())
+    last_attempted_cache_fname.write_text(cache_contents)
+
+
 # TODO TODO maybe add a block=True flag to allow (w/ =False) to return, to not
 # need to start this function in a new thread or process when trying to run the
 # olfactometer and other code from one python script. not needed as a command
@@ -1626,6 +1680,8 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         # TODO allow disabling this with env var (appropriately set)
         pyperclip.copy(config)
         print(f'Copied {config} to clipboard\n')
+
+        write_last_attempted_config_file(config)
 
     print_pins2odors(config_dict)
     print()
@@ -2131,12 +2187,20 @@ def parse_args(parser):
     return vars(args)
 
 
-def parse_config_args(parser):
+def parse_config_args(parser, require_config_path=True):
     """Returns config_path, kwargs
 
     Assumes parser has config_path positional and --hardware arguments at least
     """
     kwargs = parse_args(parser)
-    config_path = kwargs.pop('config_path')
+
+    try:
+        config_path = kwargs.pop('config_path')
+    except KeyError:
+        if require_config_path:
+            raise
+        else:
+            config_path = None
+
     return config_path, kwargs
 
