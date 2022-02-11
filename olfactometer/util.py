@@ -1293,11 +1293,17 @@ def restore_initial_setpoints(port2flow_controller, verbose=False):
         c.set_flow_rate(initial_setpoint)
 
 
-# (kwarg here?)?
-def format_odor(odor_dict):
+def format_odor(odor_dict, show_abbrevs=True):
     odor_str = odor_dict['name']
+
+    if show_abbrevs and 'abbrev' in odor_dict:
+        odor_str += f' ({odor_dict["abbrev"]})'
+
     if 'log10_conc' in odor_dict:
         log10_conc = odor_dict['log10_conc']
+
+        if log10_conc == 0:
+            return odor_str
 
         # TODO might want to also format in which manifold for clarity in e.g.
         # pair_concentration_grid.py stuff, in (name == 'solvent'?) solvent case
@@ -1313,14 +1319,12 @@ def format_odor(odor_dict):
     return odor_str
 
 
-def format_mixture_pins(pins2odors, trial_pins, delimiter=' AND '):
-    return delimiter.join([format_odor(pins2odors[p])
+def format_mixture_pins(pins2odors, trial_pins, delimiter=' AND ',
+    **format_odor_kwargs):
+
+    return delimiter.join([format_odor(pins2odors[p], **format_odor_kwargs)
         for p in trial_pins if p in pins2odors
     ])
-
-
-def print_odor(odor_dict):
-    print(format_odor(odor_dict))
 
 
 def format_duration_s(duration_s):
@@ -1426,7 +1430,7 @@ def get_pins2odors(config_dict):
     return config_dict.get('pins2odors')
 
 
-def print_pins2odors(config_dict, header=True):
+def print_pins2odors(config_dict, header=True, **format_odor_kwargs):
     pins2odors = get_pins2odors(config_dict)
     if pins2odors is None:
         return
@@ -1438,7 +1442,7 @@ def print_pins2odors(config_dict, header=True):
         print('Pins to connect odors to:')
 
     for p, o in pins2odors.items():
-        print(f' {p}: {format_odor(o)}')
+        print(f' {p}: {format_odor(o, **format_odor_kwargs)}')
 
 # TODO add fn that takes a pin_sequence (or pinlist_at_each_trial equivalent),
 # and pins2odors, and prints it all nicely
@@ -1744,7 +1748,9 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
                     if pins2odors is not None:
                         # p not in pins2odors when it's an explicit balance pin
                         print(f'trial: {trial_idx + 1}/{n_trials}, odor(s):',
-                            format_mixture_pins(pins2odors, trial_pins)
+                            format_mixture_pins(pins2odors, trial_pins,
+                                show_abbrevs=False
+                            )
                         )
                         # TODO maybe try to suffix w/ coarse tqdm progress
                         # within each trial, to get an indication of when next
@@ -1994,7 +2000,7 @@ def main(config, hardware_config=None, _skip_config_preprocess_check=False,
             first_run = False
 
 
-def argparse_config_args(parser=None, config_path=True, hardware=True):
+def argparse_config_args(parser=None, *, config_path=True, hardware=True):
     if parser is None:
         parser = argparse.ArgumentParser()
 
@@ -2052,7 +2058,7 @@ def argparse_arduino_id_args(parser=None):
     return parser
 
 
-def argparse_run_args(parser=None, **kwargs):
+def argparse_run_args(parser=None, *, wait_option=True, **kwargs):
     """Returns argparse.ArgumentParser with args shared by [main/valve_test]_cli
 
     If parser is passed in, arguments will be added to that parser. Otherwise,
@@ -2068,10 +2074,13 @@ def argparse_run_args(parser=None, **kwargs):
     parser.add_argument('-u', '--upload', action='store_true', dest='do_upload',
         help='also uploads Arduino code before running'
     )
-    parser.add_argument('-y', '--no-wait', action='store_false',
-        dest='pause_before_start',
-        help='do not wait for user to press <Enter> before starting'
-    )
+
+    if wait_option:
+        parser.add_argument('-y', '--no-wait', action='store_false',
+            dest='pause_before_start',
+            help='do not wait for user to press <Enter> before starting'
+        )
+
     parser.add_argument('-v', '--verbose', action='store_true')
 
     if _DEBUG:
@@ -2085,6 +2094,35 @@ def argparse_run_args(parser=None, **kwargs):
         )
         '''
 
+    return parser
+
+
+def add_argparse_repeat_arg(parser, default_n_repeats=3, argparse_defaults=True):
+    """
+    If argparse_defaults is False, do not use argparse defaults, so that None can be
+    processed conditionally. Shows default_n_repeats in help messages regardless.
+    """
+    parser.add_argument('-n', '--n-repeats', type=int, help='how many times to pulse '
+        f'each valve (default: {default_n_repeats})',
+        default=default_n_repeats if argparse_defaults else None
+    )
+    return parser
+
+
+def add_argparse_timing_args(parser, default_on_s, default_off_s,
+    argparse_defaults=True):
+    """
+    If argparse_defaults is False, do not use argparse defaults, so that None can be
+    processed conditionally. Shows default_[on|off]_s in help messages regardless.
+    """
+    parser.add_argument('-s', '--on-secs', type=float, help='how many seconds to '
+        f'actuate each valve for (default: {default_on_s:.1f})',
+        default=default_on_s if argparse_defaults else None
+    )
+    parser.add_argument('-o', '--off-secs', type=float, help='how many seconds between '
+        f'valve actuations (default: {default_off_s:.1f})',
+        default=default_off_s if argparse_defaults else None
+    )
     return parser
 
 

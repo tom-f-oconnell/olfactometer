@@ -186,6 +186,59 @@ def make_config_dict(generator_config_yaml_dict):
 
         return odor_log10_concs
 
+    def get_odor_dict(odor):
+        """
+        Args:
+            odor (dict|str): representation of odor
+
+        Returns odor dict, preserving any metadata in input odor (if
+        input is a dict).
+        """
+        if type(odor) is str:
+            odor_dict = {'name': odor}
+        else:
+            assert type(odor) is dict
+            odor_dict = odor.copy()
+
+            if 'name' not in odor_dict:
+                # Supports syntax like:
+                # - pair:
+                #   - <odor name>
+                #     <odor key1>: <odor value1>
+                #     ... (other metadata for this odor)
+                #
+                # Rather than just:
+                # - pair:
+                #   - name: <odor name>
+                #     <odor key1>: <odor value1>
+                #     ...
+                first_key = list(odor_dict.keys())[0]
+                first_val = list(odor_dict.values())[0]
+                assert type(first_key) is str and first_val is None
+
+                odor_dict['name'] = first_key
+
+            odor.pop('log10_concentrations')
+
+        return odor_dict
+
+    def min_odor_dict(odor_dict):
+        min_keys = ['name', 'log10_conc']
+        return {k: odor_dict[k] for k in min_keys}
+
+    def odor_dict_at_conc(odor, conc):
+        """
+        Args:
+            odor (dict): representation of odor
+            conc (float): log10 v/v concentration of odor
+        """
+        assert type(odor) is dict
+        assert 'log10_conc' not in odor
+        odor = odor.copy()
+        odor['log10_conc'] = conc
+        return odor
+
+
     # TODO refactor so loop body is just a function call?
     generated_config_dicts = []
     for pair in odor_pairs:
@@ -198,6 +251,10 @@ def make_config_dict(generator_config_yaml_dict):
 
         odor1_log10_concs = get_odor_concs(odor1)
         odor2_log10_concs = get_odor_concs(odor2)
+
+        odor_dict1 = get_odor_dict(odor1)
+        odor_dict2 = get_odor_dict(odor2)
+        del odor1, odor2
 
         assert odor1_name != odor2_name
         odor_name2log10_concs = {
@@ -220,10 +277,12 @@ def make_config_dict(generator_config_yaml_dict):
             # at run time, but it can be ignored
             odor_vials = [{'name': 'solvent'}]
 
-            for n in (odor1_name, odor2_name):
-                odor_vials.extend([{'name': n, 'log10_conc': c}
-                    for c in odor_name2log10_concs[n]
+            for odor in (odor_dict1, odor_dict2):
+                name = odor['name']
+                odor_vials.extend([odor_dict_at_conc(odor, c)
+                    for c in odor_name2log10_concs[name]
                 ])
+            del odor, name
 
             n_vials = len(odor_vials)
             # The '+ 1' is for a solvent blank that is shared between the two
@@ -243,19 +302,21 @@ def make_config_dict(generator_config_yaml_dict):
             # and B on the same manifold / valve group)
             # Odor name at 0th index = manifold 1 (valve group 1)
             # Odor name at 1st index = manifold 2 (valve group 2)
-            manifold_odors = [odor1_name, odor2_name]
+            manifold_odors = [odor_dict1, odor_dict2]
             if randomize_pairs_to_manifolds:
                 random.shuffle(manifold_odors)
 
             odor_vials = []
             odor_pins = []
-            for n, available_group_valve_pins in zip(manifold_odors,
+            for odor, available_group_valve_pins in zip(manifold_odors,
                 (available_group1_valve_pins, available_group2_valve_pins)):
+
+                name = odor['name']
 
                 assert len(available_group_valve_pins) >= n_concentrations + 1
 
-                group_vials = [{'name': n, 'log10_conc': c}
-                    for c in (None,) + tuple(odor_name2log10_concs[n])
+                group_vials = [odor_dict_at_conc(odor, c)
+                    for c in (None,) + tuple(odor_name2log10_concs[name])
                 ]
                 odor_vials.extend(group_vials)
 
@@ -263,11 +324,14 @@ def make_config_dict(generator_config_yaml_dict):
                     len(group_vials)
                 ))
 
+            del odor, name
+
             assert len(odor_vials) == len(odor_pins)
             # + 2 here because there MUST be a separate solvent on each manifold
             assert len(odor_vials) == 2 * n_concentrations + 2
 
         pins2odors = {p: o for p, o in zip(odor_pins, odor_vials)}
+        del odor_vials
 
         randomize_first_ramped_odor = data['randomize_first_ramped_odor']
         assert randomize_first_ramped_odor in (True, False)
@@ -277,7 +341,7 @@ def make_config_dict(generator_config_yaml_dict):
         # converting all .items() to tuple will make the matches sensitive to
         # this extra information)
         # Just for use within this generator.
-        vials2pins = {tuple(o.items()): p for p, o in pins2odors.items()}
+        vials2pins = {tuple(min_odor_dict(o).items()): p for p, o in pins2odors.items()}
         def get_vial_tuple(name, log10_conc=None):
             if single_manifold and log10_conc is None:
                 vial_dict = {'name': 'solvent'}

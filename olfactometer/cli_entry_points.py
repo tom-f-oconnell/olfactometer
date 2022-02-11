@@ -44,33 +44,21 @@ def main_cli():
     main(config_path, **kwargs)
 
 
-def add_argparse_repeat_arg(parser, default_n_repeats=3):
-    parser.add_argument('-n', '--n-repeats', type=int, help='how many times to pulse '
-        f'each valve (default: {default_n_repeats})'
-    )
-
-
-def add_argparse_timing_args(parser, default_on_s, default_off_s) -> None:
-    parser.add_argument('-s', '--on-secs', type=float, help='how many seconds to '
-        f'actuate each valve for (default: {default_on_s:.1f})'
-    )
-    parser.add_argument('-o', '--off-secs', type=float, help='how many seconds between '
-        f'valve actuations (default: {default_off_s:.1f})'
-    )
-
-
 def valve_test_cli():
     parser = util.argparse_run_args(config_path=False)
 
     default_n_repeats = 3
     bal_default_n_repeats = 1
-    add_argparse_repeat_arg(parser, default_n_repeats)
+    util.add_argparse_repeat_arg(parser, default_n_repeats, argparse_defaults=False)
 
     default_on_s = 0.5
     default_off_s = 0.5
     bal_default_on_s = 2.0
     bal_default_off_s = 0.5
-    add_argparse_timing_args(parser, default_on_s, default_off_s)
+    util.add_argparse_timing_args(parser, default_on_s, default_off_s,
+        # So that we can select have different defaults if -b is passed.
+        argparse_defaults=False
+    )
 
     # TODO check that my code works if pre_pulse_us is 0, or whether i need to
     # set it to some small value, and enforce that this is > that small value
@@ -120,8 +108,6 @@ def valve_test_cli():
         else:
             n_repeats = bal_default_n_repeats
 
-    pre_pulse_s = 0.0
-
     if on_secs is None:
         if not use_balances:
             pulse_s = default_on_s
@@ -148,7 +134,7 @@ def valve_test_cli():
         common.get_available_pins(config_data)
 
     timing_dict = {
-        'pre_pulse_s': pre_pulse_s,
+        'pre_pulse_s': 0.0,
         'pulse_s': pulse_s,
         'post_pulse_s': post_pulse_s,
     }
@@ -203,15 +189,16 @@ def one_valve_cli():
     )
 
     default_n_repeats = 2
-    add_argparse_repeat_arg(parser, default_n_repeats)
+    util.add_argparse_repeat_arg(parser, default_n_repeats)
 
     default_on_s = 1.0
     default_off_s = 10.0
-    add_argparse_timing_args(parser, default_on_s, default_off_s)
+    util.add_argparse_timing_args(parser, default_on_s, default_off_s)
 
     default_pre_s = 0.0
     parser.add_argument('-e', '--pre-secs', type=float, help='seconds to wait from '
-        f'recording start to first valve onset (default: {default_pre_s:.1f})'
+        f'recording start to first valve onset (default: {default_pre_s:.1f})',
+        default=default_pre_s
     )
 
     kwargs = util.parse_args(parser)
@@ -221,28 +208,10 @@ def one_valve_cli():
     pin = kwargs.pop('pin')
     assert pin is not None
 
-    on_secs = kwargs.pop('on_secs')
-    off_secs = kwargs.pop('off_secs')
-    pre_secs = kwargs.pop('pre_secs')
+    pre_pulse_s = kwargs.pop('pre_secs')
+    pulse_s = kwargs.pop('on_secs')
+    post_pulse_s = kwargs.pop('off_secs')
     n_repeats = kwargs.pop('n_repeats')
-
-    if n_repeats is None:
-        n_repeats = default_n_repeats
-
-    if pre_secs is None:
-        pre_pulse_s = default_pre_s
-    else:
-        pre_pulse_s = pre_secs
-
-    if on_secs is None:
-        pulse_s = default_on_s
-    else:
-        pulse_s = on_secs
-
-    if off_secs is None:
-        post_pulse_s = default_off_s
-    else:
-        post_pulse_s = off_secs
 
     config_data = util.load_hardware_config(hardware_config, required=True)
     common.validate_hardware_dict(config_data)
@@ -268,6 +237,64 @@ def one_valve_cli():
         )
 
     pinlist_at_each_trial = [[pin] for _ in range(n_repeats)]
+
+    # This does nothing in single_manifold case.
+    pinlist_at_each_trial = common.add_balance_pins(
+        pinlist_at_each_trial, pins2balances
+    )
+    if single_manifold:
+        # Normally `common.get_available_pins` would set this, but doing
+        # this (same as what it does) rather than calling it twice.
+        balance_pin = list(set(pins2balances.values()))[0]
+        settings_dict = generated_config_dict[common.settings_key]
+        settings_dict['balance_pin'] = balance_pin
+        del balance_pin, settings_dict
+
+    common.add_pinlist(pinlist_at_each_trial, generated_config_dict)
+
+    main(generated_config_dict, _skip_config_preprocess_check=True, **kwargs)
+
+
+# TODO try to refactor this + valve_test_cli + one_valve_cli to share a bit more code
+def flush_cli():
+    parser = util.argparse_run_args(config_path=False, wait_option=False)
+
+    default_n_repeats = 3
+    util.add_argparse_repeat_arg(parser, default_n_repeats)
+
+    default_on_s = 10.0
+    default_off_s = 0.2
+    util.add_argparse_timing_args(parser, default_on_s, default_off_s)
+
+    kwargs = util.parse_args(parser)
+
+    hardware_config = kwargs.pop('hardware_config')
+    pulse_s = kwargs.pop('on_secs')
+    post_pulse_s = kwargs.pop('off_secs')
+    n_repeats = kwargs.pop('n_repeats')
+
+    config_data = util.load_hardware_config(hardware_config, required=True)
+    common.validate_hardware_dict(config_data)
+
+    # This is currently what *would* set 'balance_pin', if optional
+    # `generated_config_dict` arg were passed, so we don't need to worry about
+    # stripping it from the output of `common.parse_common_settings`.
+    available_valve_pins, pins2balances, single_manifold = \
+        common.get_available_pins(config_data)
+
+    timing_dict = {
+        'pre_pulse_s': 0.0,
+        'pulse_s': pulse_s,
+        'post_pulse_s': post_pulse_s,
+    }
+    config_data.update(timing_dict)
+
+    generated_config_dict = common.parse_common_settings(config_data)
+
+    trial_pins = sorted(available_valve_pins)
+
+    pinlist_at_each_trial = [[p] for p in trial_pins for _ in range(n_repeats)]
+    del trial_pins
 
     # This does nothing in single_manifold case.
     pinlist_at_each_trial = common.add_balance_pins(

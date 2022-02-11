@@ -6,7 +6,10 @@ setup(
     name='olfactometer',
     packages=find_packages(),
     install_requires=[
-        # For nanopb
+        # For nanopb (does it not refer to them though? this might have just been when I
+        # was using the submodule, rather than the one also in install_requires
+        # below...)
+        # TODO delete if unused (same w/ nanopb submodule)
         'protobuf',
         'grpcio-tools',
 
@@ -24,16 +27,14 @@ setup(
         # See note in package_data section below about trying to install
         # generator that comes with the nanopb submodule we have.
         # TL;DR using this package for simplicity.
-        # TODO is this still used? check in fresh 18.04 vm and delete if not
-        # (test both with and without docker)
-        'nanopb',
+        # NOTE: I had some issues w/ 0.4.5.post1 and installing this version
+        # specifically fixed it (command some of my upload machinery expects is absent
+        # here)
+        'nanopb==0.4.4',
 
         'alicat',
 
         'pyperclip',
-
-        # TODO TODO delete after debugging
-        'ipdb'
     ],
     # This just duplicates what's in test_requirements.txt, because apparently
     # pip doesn't actually provide any way to install these...
@@ -47,13 +48,13 @@ setup(
     entry_points={
         'console_scripts': [
             'olf=olfactometer:main_cli',
-            # TODO still want the olf prefix for this one?
-            # TODO one for clearing out lines after experiments?
-            # (like olf-test-valves, but just long [appropriately balanced] pulses
-            # through each valve)
+
+            'olf-upload=olfactometer:upload_cli',
+
             'olf-test-valves=olfactometer:valve_test_cli',
             'olf-one-valve=olfactometer:one_valve_cli',
-            'olf-upload=olfactometer:upload_cli',
+            'olf-flush=olfactometer:flush_cli',
+
             'olf-time=olfactometer:print_config_time_cli',
             'olf-pins2odors=olfactometer:show_pins2odors_cli',
             # See TODO in upload.version_str definition. until it's addressed,
