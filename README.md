@@ -1,4 +1,39 @@
 
+### Main commands
+
+Run stimulus program defined in a YAML config file:
+```
+olf <config-file-path>
+```
+See [my config repo](https://github.com/tom-f-oconnell/tom_olfactometer_configs) 
+for some examples.
+
+
+Runs through all valves to test they are actuating:
+```
+olf-test-valves
+```
+
+Flushes all valves with long, appropriately balanced, pulses:
+```
+olf-flush
+```
+
+Runs a few pulses of the specified pin, balanced as appropriate:
+```
+olf-one-valve <pin>
+```
+
+Re-runs the last stimulus program attempted:
+```
+olf-retry
+```
+
+Prints the last stimulus program attempted, and copies its path to your clipboard:
+```
+olf-lastrun
+```
+
 ### Supported microcontrollers
 
 Anything with an AVR microprocessor that is compatible with the Arduino IDE
@@ -12,6 +47,10 @@ Some AVR based boards known not to work:
 
 
 ### Installation
+
+WARNING: these Docker instructions are out of date and may be removed. Better to follow
+the development installation instruction below.
+
 Just [install Docker](https://docs.docker.com/get-docker/), and proceed to the 
 `Running` section below.
 
