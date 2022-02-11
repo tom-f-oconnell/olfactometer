@@ -48,7 +48,11 @@ setup(
         'console_scripts': [
             'olf=olfactometer:main_cli',
             # TODO still want the olf prefix for this one?
+            # TODO one for clearing out lines after experiments?
+            # (like olf-test-valves, but just long [appropriately balanced] pulses
+            # through each valve)
             'olf-test-valves=olfactometer:valve_test_cli',
+            'olf-one-valve=olfactometer:one_valve_cli',
             'olf-upload=olfactometer:upload_cli',
             'olf-time=olfactometer:print_config_time_cli',
             'olf-pins2odors=olfactometer:show_pins2odors_cli',
