@@ -2,7 +2,7 @@
 Utility functions shared by one or more config generators.
 """
 
-from olfactometer import util
+from olfactometer import validation
 
 # TODO maybe have `olfactometer` validate that all generator outputs have a
 # `pins2odors` / `odors2pins` variable with the pins all used (and not
@@ -13,7 +13,7 @@ from olfactometer import util
 def validate_pinlist(pinlist):
     assert type(pinlist) is list
     for p in pinlist:
-        util.validate_pin(p)
+        validation.validate_pin(p)
 
 
 def validate_pinlist_list(pinlist_at_each_trial):
@@ -102,7 +102,7 @@ hardware_specific_keys = (
 def validate_nonvalve_pins(data, nonvalve_pin_keys=(_top, _rec)):
     """
     Raises `AssertionError` if any of `nonvalve_pin_keys` are present in `data`
-    and fail `util.validate_pin` check.
+    and fail `validation.validate_pin` check.
 
     Returns set of all non-valve pin numbers discovered in this process, for
     further checking (e.g. that they don't overlap with valve pin numbers).
@@ -111,7 +111,7 @@ def validate_nonvalve_pins(data, nonvalve_pin_keys=(_top, _rec)):
     for k in nonvalve_pin_keys:
         if k in data:
             p = data[k]
-            util.validate_pin(p)
+            validation.validate_pin(p)
             nonvalve_pins.add(p)
 
     return nonvalve_pins
@@ -155,7 +155,7 @@ def parse_common_settings(data, generated_config_dict=None):
     # just validate this key is only present in single manifold case in the
     # function that really disambiguates those cases (and perhaps subsequent
     # stuff that handles random pin assignment)
-    # (need to update at least util.valve_test_cli if i make this change)
+    # (need to update at least valve_test_cli if i make this change)
 
     return generated_config_dict
 
@@ -250,7 +250,7 @@ def get_available_pins(data, generated_config_dict=None):
         # TODO should i support this being undefined in single manifold case?
         # (maybe all 2 way valves, for instance...)
         balance_pin = data['balance_pin']
-        util.validate_pin(balance_pin)
+        validation.validate_pin(balance_pin)
 
         pins2balances = {p: balance_pin for p in available_valve_pins}
 
@@ -265,8 +265,8 @@ def get_available_pins(data, generated_config_dict=None):
 
         group1_balance_pin = data['group1_balance_pin']
         group2_balance_pin = data['group2_balance_pin']
-        util.validate_pin(group1_balance_pin)
-        util.validate_pin(group2_balance_pin)
+        validation.validate_pin(group1_balance_pin)
+        validation.validate_pin(group2_balance_pin)
 
         available_valve_pins = \
             available_group1_valve_pins + available_group2_valve_pins
@@ -276,7 +276,7 @@ def get_available_pins(data, generated_config_dict=None):
             pins2balances[p] = group1_balance_pin
         for p in available_group2_valve_pins:
             pins2balances[p] = group2_balance_pin
- 
+
         single_manifold = False
 
     # May remove later. Just to check that other functions using pins2balances
@@ -293,7 +293,7 @@ def get_available_pins(data, generated_config_dict=None):
         settings_dict['balance_pin'] = balance_pin
 
     # Leaving the remaining validation that pin numbers are valid to the
-    # functions in olfactometer/util.py
+    # functions in olfactometer/validation.py
     odor_pin_set = set(available_valve_pins)
     balance_pin_set = set(pins2balances.values())
     all_pin_set = odor_pin_set | balance_pin_set

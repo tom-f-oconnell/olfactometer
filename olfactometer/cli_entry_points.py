@@ -8,8 +8,7 @@ import argparse
 
 import pyperclip
 
-from olfactometer import util
-from olfactometer.util import main, _DEBUG
+from olfactometer import main, olf, config_io, util, _DEBUG
 from olfactometer.generators import common
 from olfactometer.upload import main as upload_main
 from olfactometer.upload import version_str as _version_str
@@ -59,7 +58,7 @@ def main_cli(config_path=None):
     main(config_path, **kwargs)
 
 
-def get_last_attempted_cli(copy=True):
+def get_last_attempted_cli(copy=True, _return=False):
     config_path, abs_config_path = util.get_last_attempted()
 
     print(f'Last attempted config: {config_path}', end='')
@@ -71,11 +70,14 @@ def get_last_attempted_cli(copy=True):
 
     print(f'Absolute path: {abs_config_path}')
 
-    return config_path, abs_config_path
+    # To prevent this tuple from being printed (behavior on 20.04 at least) in the CLI
+    # entry point that just references this function.
+    if _return:
+        return config_path, abs_config_path
 
 
 def retry_last_attempted_cli():
-    config_path, abs_config_path = get_last_attempted_cli(copy=False)
+    config_path, abs_config_path = get_last_attempted_cli(copy=False, _return=True)
     print()
     # i was originally wanted to use abs path here, to be able to run from anywhere, but
     # it makes what gets copied to clipboard / printed inconsistent w/ what we'd have on
@@ -163,7 +165,7 @@ def valve_test_cli():
     else:
         post_pulse_s = off_secs
 
-    config_data = util.load_hardware_config(hardware_config, required=True)
+    config_data = config_io.load_hardware_config(hardware_config, required=True)
     common.validate_hardware_dict(config_data)
 
     # This is currently what *would* set 'balance_pin', if optional
@@ -252,7 +254,7 @@ def one_valve_cli():
     post_pulse_s = kwargs.pop('off_secs')
     n_repeats = kwargs.pop('n_repeats')
 
-    config_data = util.load_hardware_config(hardware_config, required=True)
+    config_data = config_io.load_hardware_config(hardware_config, required=True)
     common.validate_hardware_dict(config_data)
 
     # This is currently what *would* set 'balance_pin', if optional
@@ -312,7 +314,7 @@ def flush_cli():
     post_pulse_s = kwargs.pop('off_secs')
     n_repeats = kwargs.pop('n_repeats')
 
-    config_data = util.load_hardware_config(hardware_config, required=True)
+    config_data = config_io.load_hardware_config(hardware_config, required=True)
     common.validate_hardware_dict(config_data)
 
     # This is currently what *would* set 'balance_pin', if optional
@@ -349,7 +351,9 @@ def flush_cli():
 
     common.add_pinlist(pinlist_at_each_trial, generated_config_dict)
 
-    main(generated_config_dict, _skip_config_preprocess_check=True, **kwargs)
+    main(generated_config_dict, _skip_config_preprocess_check=True,
+        pause_before_start=False, **kwargs
+    )
 
 
 def upload_cli():
@@ -395,9 +399,9 @@ def print_config_time_cli():
     n_config = 0
     total_s = 0
 
-    for single_run_config in util.config_iter(config_path, **kwargs):
+    for single_run_config in olf.config_iter(config_path, **kwargs):
 
-        all_required_data, config_dict = util.load(single_run_config)
+        all_required_data, config_dict = config_io.load(single_run_config)
 
         time_s = util.time_config_will_take_s(all_required_data, print_=True)
         total_s += time_s
@@ -415,10 +419,10 @@ def show_pins2odors_cli():
 
     config_path, kwargs = util.parse_config_args(parser)
 
-    for single_run_config in util.config_iter(config_path,
+    for single_run_config in olf.config_iter(config_path,
         _skip_config_preprocess_check=True, **kwargs):
 
-        _, config_dict = util.load(single_run_config)
+        _, config_dict = config_io.load(single_run_config)
 
         if 'generator' in config_dict:
             raise ValueError('Do not use this (directly) with config that use '

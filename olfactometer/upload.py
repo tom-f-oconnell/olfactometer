@@ -11,24 +11,21 @@ import sys
 import json
 
 import olfactometer
-from olfactometer import util
+from olfactometer import util, THIS_PACKAGE_DIR
 
 
 # TODO see note above similar line in util.py as to whether to try replacing
 # this w/ pkg_resources
-this_package_dir = split(abspath(realpath(__file__)))[0]
 sketch_name = 'olfactometer.ino'
-sketch_path = join(this_package_dir, 'firmware/olfactometer', sketch_name)
-nanopb_dir = join(this_package_dir, 'nanopb')
+sketch_path = join(THIS_PACKAGE_DIR, 'firmware/olfactometer', sketch_name)
+nanopb_dir = join(THIS_PACKAGE_DIR, 'nanopb')
 
-assert exists(this_package_dir), \
-    f'this_package_dir={this_package_dir} does not exist'
 assert exists(sketch_path), f'sketch_path={sketch_path} does not exist'
 assert exists(nanopb_dir), f'nanopb_dir={nanopb_dir} does not exist'
 
 
 def generate_nanopb_code(sketch_dir):
-    proto_files = glob.glob(join(this_package_dir, '*.proto'))
+    proto_files = glob.glob(join(THIS_PACKAGE_DIR, '*.proto'))
     assert len(proto_files) == 1, \
         f'len(proto_files) != 1, proto_files={proto_files}'
     proto_file = proto_files[0]
@@ -134,7 +131,7 @@ def make_arduino_sketch_and_libraries(sketch_dir, arduino_lib_dir,
                 )
             copy_or_link(src, dst)
 
-    nanopb_arduino_src_dir = join(this_package_dir, 'nanopb-arduino', 'src')
+    nanopb_arduino_src_dir = join(THIS_PACKAGE_DIR, 'nanopb-arduino', 'src')
     nanopb_arduino_lib_dir = join(arduino_lib_dir, 'nanopb-arduino')
     os.makedirs(nanopb_arduino_lib_dir, exist_ok=True)
 
@@ -335,7 +332,7 @@ def version_str(update_check=False, update_on_prompt=False):
         # Packages\PythonSoftwareFoundation.Python.3.8_qbz5n2kfra8p0\
         # LocalCache\local-packages\Python38\site-packages\olfactometer
         try:
-            repo = git.Repo(this_package_dir, search_parent_directories=True)
+            repo = git.Repo(THIS_PACKAGE_DIR, search_parent_directories=True)
         except InvalidGitRepositoryError:
             # TODO maybe use pip x.y.z version in this case?
             # or have a file w/ version that gets bumped somehow / generated at
