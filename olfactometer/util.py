@@ -266,10 +266,13 @@ def get_last_attempted():
     if not last_attempted_cache_fname.exists():
         raise IOError('no record of previously attempted config file!')
 
-    lines = last_attempted_cache_fname.read_text().splitlines()
-    # TODO print contents of file starting on next line (w/ end clearly demarcated)
-    # TODO why is this not working on windows?
-    assert len(lines) == 2, 'malformed file storing last attempted config'
+    text = last_attempted_cache_fname.read_text()
+    lines = text.splitlines()
+
+    assert len(lines) == 2, ('malformed file storing last attempted config '
+        f'({last_attempted_cache_fname}). contents:\n{repr(text)}'
+    )
+
     relative_path, abs_path = lines
 
     return relative_path, abs_path
@@ -291,7 +294,7 @@ def write_last_attempted_config_file(config_fname) -> None:
     app_data_dir = last_attempted_cache_fname.parents[0]
     app_data_dir.mkdir(parents=True, exist_ok=True)
 
-    cache_contents = config_fname + os.linesep + str(Path(config_fname).resolve())
+    cache_contents = f'{config_fname}\n{Path(config_fname).resolve()}'
     last_attempted_cache_fname.write_text(cache_contents)
 
 
