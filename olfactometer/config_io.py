@@ -13,6 +13,7 @@ from google.protobuf import json_format
 import yaml
 
 from olfactometer import util, IN_DOCKER
+from olfactometer.generators.common import validate_hardware_dict
 
 # NOTE: this import must come after `util.generate_protobuf_outputs` call, which
 # is currently ensured by happening on first module import (via __init__.py)
@@ -112,6 +113,8 @@ def load_hardware_config(hardware_config=None, required=False):
             hardware_yaml_dict = yaml.safe_load(f)
     else:
         hardware_yaml_dict = None
+
+    validate_hardware_dict(hardware_yaml_dict)
 
     return hardware_yaml_dict
 

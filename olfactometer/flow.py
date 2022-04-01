@@ -8,6 +8,8 @@ from pprint import pprint
 
 from alicat import FlowController
 
+from olfactometer.generators import common
+
 
 flow_setpoints_sequence_key = 'flow_setpoints_sequence'
 
@@ -18,10 +20,10 @@ def open_alicat_controller(port, save_initial_setpoints=True,
     check_gas_is_air=True, _skip_read_check=False, verbose=False):
     """Returns opened alicat.FlowController for controller on input port.
 
-    Also registers atexit function to close connection.
+    Also registers atexit function to close connection and restore previous setpoints.
 
-    Unless all kwargs are False, queries the controller to set
-    corresponding entry in `_port2initial_get_output`.
+    Unless save_initial_setpoints and check_gas_is_air are both False, queries the
+    controller to set corresponding entry in `_port2initial_get_output`.
     """
     if save_initial_setpoints or check_gas_is_air:
         _skip_read_check = False
@@ -188,6 +190,8 @@ def set_flow_setpoints(port2flow_controller, trial_setpoints,
 
         _port2last_flow_rate[port] = sccm
 
+        # TODO TODO TODO shouldn't i need to wait some amount of time for it to achieve
+        # the setpoint? what value is appropriate?
         if check_set_flows:
             data = c.get()
 
@@ -227,4 +231,114 @@ def restore_initial_setpoints(port2flow_controller, verbose=False):
             print(f'- {port}: {initial_setpoint:.1f} mL/min')
 
         c.set_flow_rate(initial_setpoint)
+
+
+total_flow_key = 'total_flow_ml_per_min'
+odor_flow_key = 'odor_flow_ml_per_min'
+
+class FlowHardwareNotConfiguredError(Exception):
+    pass
+
+def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_config):
+
+    def _n_trials(config_dict):
+        return len(config_dict['pin_sequence']['pin_groups'])
+
+    # Already has what we would add
+    if flow_setpoints_sequence_key in generated_config:
+        return generated_config
+
+    # No experiment-wide flow specified
+    if not ((total_flow_key in input_config_dict) or
+        (odor_flow_key in input_config_dict)):
+
+        return generated_config
+
+    if total_flow_key not in input_config_dict:
+        raise ValueError(f'{total_flow_key} must be set if {odor_flow_key} is')
+
+    if odor_flow_key not in input_config_dict:
+        raise ValueError(f'{odor_flow_key} must be set if {total_flow_key} is')
+
+    _, _, is_single_manifold = common.get_available_pins(hardware_dict)
+
+    # TODO TODO TODO either rename key to indicate units are (mass, right?) sccm not
+    # volumetric ml/min, or convert / interact w/ alicat appropriately
+    odor_flow_sccm = input_config_dict[odor_flow_key]
+    total_flow_sccm = input_config_dict[total_flow_key]
+
+    if is_single_manifold:
+        odor_mfc_prefixes = ('odor_flow_controller_',)
+        carrier_flow_sccm = total_flow_sccm - odor_flow_sccm
+
+    # Then it must be a dual manifold, given what my hardware config options currently
+    # allow. No higher number of manifolds is currently supported.
+    else:
+        odor_mfc_prefixes = (f'group{n}_flow_controller_' for n in (1, 2))
+        carrier_flow_sccm = total_flow_sccm - 2 * odor_flow_sccm
+
+    # TODO include validation for these in hardware validation (currently in
+    # generators.common), including:
+    # - making sure if any are specified, all are, and either for a single or dual
+    #   manifold setup
+    # - forbidding mismatch of ports/addresses
+    # - warning if using ports rather than addresses
+    # TODO refactor
+    using_addresses = None
+    def get_mfc_id(key_prefix):
+        nonlocal using_addresses
+        already_found = False
+        mfc_id = None
+        for id_type in ('address', 'port'):
+
+            key = f'{key_prefix}{id_type}'
+            if key in hardware_dict:
+                assert not already_found, 'multiple flow controller ID types specified'
+                already_found = True
+                if id_type == 'address':
+                    assert using_addresses in (None, True), 'multiple MFC id types!'
+                    using_addresses = True
+                else:
+                    assert using_addresses in (None, False), 'multiple MFC id types!'
+                    using_addresses = False
+
+                mfc_id = hardware_dict[key]
+
+        if mfc_id is None:
+            raise FlowHardwareNotConfiguredError('flow controller ID not found at '
+                f'either {key_prefix}[address|port] in hardware config, but flows '
+                'setpoints were configured!'
+            )
+
+        return mfc_id
+
+    carrier_mfc_id = get_mfc_id('carrier_flow_controller_')
+    odor_mfc_ids = sorted([get_mfc_id(p) for p in odor_mfc_prefixes])
+
+    assert using_addresses is not None
+
+    id_type = 'address' if using_addresses else 'port'
+
+    def one_experiment_config_with_flow_sequence(config_dict):
+        n_trials = _n_trials(config_dict)
+
+        flow_setpoints_sequence = [
+            [{id_type: carrier_mfc_id, 'sccm': carrier_flow_sccm}] +
+            [{id_type: mfc_id, 'sccm': odor_flow_sccm} for mfc_id in odor_mfc_ids]
+            for _ in range(n_trials)
+        ]
+        config_dict = config_dict.copy()
+        config_dict[flow_setpoints_sequence_key] = flow_setpoints_sequence
+        return config_dict
+
+    # TODO should probably refactor this ~squeezing of config, or just always have
+    # things as a sequence, sometimes just length 1
+
+    # Config only represents one experiment, not a sequence of them
+    if isinstance(generated_config, dict):
+        return one_experiment_config_with_flow_sequence(generated_config)
+
+    # Should be an iterable containing configurations for a sequence of experiments
+    else:
+        return [one_experiment_config_with_flow_sequence(d) for d in generated_config]
 

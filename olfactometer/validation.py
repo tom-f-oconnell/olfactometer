@@ -227,33 +227,47 @@ def validate(msg, warn=True, _first_call=True):
         validate(value, warn=warn, _first_call=False)
 
 
-# TODO later, support some other IDs (maybe some USB unique IDs or something in
-# alicat manufacturer data [which can in theory by queried from devices, though
-# i don't think numat/alicat currently supports this via one of their provided
-# functions)
-required_flow_setpoint_keys = ('port', 'sccm')
 def validate_flow_setpoints_sequence(flow_setpoints_sequence, warn=True):
-    required_key_set = set(required_flow_setpoint_keys)
 
     all_seen_ports = set()
+    all_seen_addresses = set()
+
     trial_setpoint_sums = set()
+
     for trial_setpoints in flow_setpoints_sequence:
+
         curr_trial_setpoint_sum = 0.0
         for one_controller_setpoint in trial_setpoints:
-            curr_key_set = set(one_controller_setpoint.keys())
-            if not curr_key_set == required_key_set:
-                missing_keys = required_key_set - curr_key_set
-                raise ValueError(f'missing required keys {missing_keys} for at '
-                    'least one entry in {flow_setpoints_sequence_key} from '
-                    'configuration'
+
+            # TODO am i actually setting flows in terms of sccm (thats a unit of mass
+            # flow, right?) does it depend on hardware settings? as i commented
+            # elsewhere, is it possible to set flows in volumetric units?
+            if 'sccm' not in one_controller_setpoint:
+                raise ValueError('sccm must be set for each trial, for each flow '
+                    'controller'
                 )
 
-            port = one_controller_setpoint['port']
-            all_seen_ports.add(port)
-            if type(port) is not str:
-                raise ValueError(f'ports in {flow_setpoints_sequence_key} must '
-                    'be of type str'
+            if ('port' not in one_controller_setpoint and
+                'address' not in one_controller_setpoint):
+                raise ValueError('port or address must be set for each trial, for each'
+                    'flow controller. always use one or the other.'
                 )
+
+            if 'port' in one_controller_setpoint:
+                port = one_controller_setpoint['port']
+                all_seen_ports.add(port)
+                if type(port) is not str:
+                    raise ValueError(f'ports in {flow_setpoints_sequence_key} '
+                        'must be of type str'
+                    )
+
+            if 'address' in one_controller_setpoint:
+                address = one_controller_setpoint['address']
+                all_seen_addresses.add(address)
+                if type(address) is not str:
+                    raise ValueError(f'addresses in {flow_setpoints_sequence_key} '
+                        'must be of type str'
+                    )
 
             try:
                 setpoint = float(one_controller_setpoint['sccm'])
@@ -270,20 +284,37 @@ def validate_flow_setpoints_sequence(flow_setpoints_sequence, warn=True):
 
         trial_setpoint_sums.add(curr_trial_setpoint_sum)
 
+    if len(all_seen_ports) > 0 and len(all_seen_addresses) > 0:
+        raise ValueError('only use either ports or addresses to reference flow '
+            'controllers'
+        )
+
+    # False if using ports.
+    using_addresses = len(all_seen_addresses) > 0
+
     if warn and len(trial_setpoint_sums) > 1:
         warnings.warn('setpoint sum is not the same on each trial! '
             f'unique sums: {trial_setpoint_sums}'
         )
 
-    # For now, we are going to require that each port that is referenced is
+    # For now, we are going to require that each port/address that is referenced is
     # referenced in the list for each trial, for simplicity of downstream code.
     for trial_setpoints in flow_setpoints_sequence:
-        trial_ports = {x['port'] for x in trial_setpoints}
-        if trial_ports != all_seen_ports:
-            missing = all_seen_ports - trial_ports
-            raise ValueError('each port must be referenced in each element '
-                f'of flow_setpoints_sequence. current trial missing: {missing}'
-            )
+
+        if using_addresses:
+            trial_addresses = {x['address'] for x in trial_setpoints}
+            if trial_addresses != all_seen_addresses:
+                missing = all_seen_addresses - trial_addresses
+                raise ValueError('each address must be referenced in each element '
+                    f'of flow_setpoints_sequence. current trial missing: {missing}'
+                )
+        else:
+            trial_ports = {x['port'] for x in trial_setpoints}
+            if trial_ports != all_seen_ports:
+                missing = all_seen_ports - trial_ports
+                raise ValueError('each port must be referenced in each element '
+                    f'of flow_setpoints_sequence. current trial missing: {missing}'
+                )
 
 
 def validate_config_dict(config_dict, warn=True):

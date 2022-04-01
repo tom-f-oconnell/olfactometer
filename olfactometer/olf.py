@@ -300,6 +300,9 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
     hardware_yaml_dict = config_io.load_hardware_config(hardware_config)
 
     if hardware_yaml_dict is not None:
+        # TODO why is this not just in the generator.common fn that is supposed to
+        # validate hardware config dicts?
+        #
         # assumes all hardware specific keys can be detected at the top level
         # (so far the case, i believe, at least for expected inputs to
         # preprocessors)
@@ -348,6 +351,20 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
     # Output will be either a dict or a list of dicts. In the latter case,
     # each should be written to their own YAML file.
     generated_config = generator_fn(generator_yaml_dict)
+
+    # TODO if i ever refactor "generators" to OOP rather than mostly independent
+    # make_config_dict fns, include this as a default step that happens after pinlist is
+    # populated
+    try:
+        generated_config = flow.generate_flow_setpoint_sequence(generator_yaml_dict,
+            hardware_yaml_dict, generated_config
+        )
+
+    except flow.FlowHardwareNotConfiguredError as err:
+        if generator_yaml_dict.get('require_flow_controllers', False):
+            raise
+        else:
+            warnings.warn(err)
 
     save_generator_output = generator_yaml_dict.get(
         'save_generator_output', True

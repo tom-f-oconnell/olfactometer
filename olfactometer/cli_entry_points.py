@@ -166,7 +166,6 @@ def valve_test_cli():
         post_pulse_s = off_secs
 
     config_data = config_io.load_hardware_config(hardware_config, required=True)
-    common.validate_hardware_dict(config_data)
 
     # This is currently what *would* set 'balance_pin', if optional
     # `generated_config_dict` arg were passed, so we don't need to worry about
@@ -255,7 +254,6 @@ def one_valve_cli():
     n_repeats = kwargs.pop('n_repeats')
 
     config_data = config_io.load_hardware_config(hardware_config, required=True)
-    common.validate_hardware_dict(config_data)
 
     # This is currently what *would* set 'balance_pin', if optional
     # `generated_config_dict` arg were passed, so we don't need to worry about
@@ -315,7 +313,6 @@ def flush_cli():
     n_repeats = kwargs.pop('n_repeats')
 
     config_data = config_io.load_hardware_config(hardware_config, required=True)
-    common.validate_hardware_dict(config_data)
 
     # This is currently what *would* set 'balance_pin', if optional
     # `generated_config_dict` arg were passed, so we don't need to worry about

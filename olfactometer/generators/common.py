@@ -10,21 +10,21 @@ from olfactometer import validation
 # odors at least not null or something (maybe str?)
 # (or just some stuff in here?)
 
+# TODO move to validation.py?
 def validate_pinlist(pinlist):
     assert type(pinlist) is list
     for p in pinlist:
         validation.validate_pin(p)
 
 
+# TODO move to validation.py?
 def validate_pinlist_list(pinlist_at_each_trial):
     assert type(pinlist_at_each_trial) is list
     for pinlist in pinlist_at_each_trial:
         validate_pinlist(pinlist)
 
 
-# TODO odor[list] validate fn? maybe in util?
-# TODO fn to validate hardware config? (including that there are no unexpected
-# variables, at least optionally) (maybe again in util though)
+# TODO odor[list] validate fn??
 
 
 settings_key = 'settings'
@@ -90,6 +90,9 @@ single_manifold_specific_keys = ['balance_pin', 'available_valve_pins']
 two_manifold_specific_keys = ['group1_balance_pin', 'group2_balance_pin',
     'available_group1_valve_pins', 'available_group2_valve_pins'
 ]
+# TODO rename these to be more descriptive
+# TODO probably move to util or some other central place so this file + validators can
+# access them
 _top = 'timing_output_pin'
 _rec = 'recording_indicator_pin'
 
@@ -99,6 +102,7 @@ hardware_specific_keys = (
     single_manifold_specific_keys + two_manifold_specific_keys + [_top, _rec]
 )
 
+# TODO move to validation.py?
 def validate_nonvalve_pins(data, nonvalve_pin_keys=(_top, _rec)):
     """
     Raises `AssertionError` if any of `nonvalve_pin_keys` are present in `data`
@@ -127,7 +131,7 @@ def parse_common_settings(data, generated_config_dict=None):
     - 'pulse_s'
     - 'post_pulse_s'
 
-    If 'pulse_train_[on|off]_s' are present, also handles these.
+    If present, will also handle 'pulse_train_[on|off]_s'
 
     Returns the modified / created generated_config_dict. Creates if not passed.
     """
@@ -310,6 +314,7 @@ def get_available_pins(data, generated_config_dict=None):
 # might not (currently) exist one such function that has access to all of the
 # necessary data at once though, which might be necessary for e.g. the non-valve
 # / valve overlap check
+# TODO move to validation.py?
 def validate_hardware_dict(hardware_dict, allow_unknown_keys=True):
     """Raises [Assertion/Value]Error if dict from hardware YAML is invalid.
 
