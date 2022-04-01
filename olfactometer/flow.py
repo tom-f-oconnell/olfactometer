@@ -31,6 +31,8 @@ safe_usb_ids_to_check_for_mfcs = None
 
 _address2port = dict()
 _whitelist_ports = set()
+# TODO cache com port each was found on last to user data, and check those first,
+# to save time
 def find_port_for_controller_address(address, unsafe=False):
 
     if safe_usb_ids_to_check_for_mfcs is None and not unsafe:
@@ -44,25 +46,29 @@ def find_port_for_controller_address(address, unsafe=False):
         return _address2port[address]
 
     if _DEBUG:
-        print('USB (vid, pid) whitelist, to allow searching for MFCs:')
-        pprint(safe_usb_ids_to_check_for_mfcs)
+        print(f'searching for MFC with address {address}')
 
     for port in sorted(list_ports.comports()):
 
         if port.device in _address2port.values():
             continue
 
+        if _DEBUG:
+            print(f'trying port {port.device}')
+
         if not (port.vid, port.pid) in safe_usb_ids_to_check_for_mfcs:
             if _DEBUG:
-                print(f'vid={port.vid} pid={port.pid} of port {port.device} not in '
-                    'whitelist. skipping.'
-                )
+                print(f'vid={port.vid} pid={port.pid} not in whitelist. skipping.')
+
             continue
 
         _whitelist_ports.add(port.device)
 
         if not FlowController.is_connected(port.device, address=address):
             continue
+
+        if _DEBUG:
+            print('found')
 
         _address2port[address] = port.device
         return port.device

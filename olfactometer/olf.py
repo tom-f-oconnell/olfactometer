@@ -364,6 +364,10 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
 
         flow.safe_usb_ids_to_check_for_mfcs = {tuple(p) for p in safe_vid_pid_pairs}
 
+        if _DEBUG:
+            print('USB (vid, pid) whitelist, to allow searching for MFCs:')
+            pprint(flow.safe_usb_ids_to_check_for_mfcs)
+
     # TODO if i ever refactor "generators" to OOP rather than mostly independent
     # make_config_dict fns, include this as a default step that happens after pinlist is
     # populated
