@@ -352,6 +352,18 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
     # each should be written to their own YAML file.
     generated_config = generator_fn(generator_yaml_dict)
 
+    # TODO refactor so addresses can also be used w/o generators
+    if flow.safe_usb_ids_key in hardware_yaml_dict:
+        safe_vid_pid_pairs = hardware_yaml_dict[flow.safe_usb_ids_key]
+
+        # TODO move to hardware config validation
+        for pair in safe_vid_pid_pairs:
+            assert len(pair) == 2
+            for x in pair:
+                assert type(x) is int
+
+        flow.safe_usb_ids_to_check_for_mfcs = {tuple(p) for p in safe_vid_pid_pairs}
+
     # TODO if i ever refactor "generators" to OOP rather than mostly independent
     # make_config_dict fns, include this as a default step that happens after pinlist is
     # populated
@@ -543,7 +555,7 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
     # to the firmware)
     warn = True
     validation.validate_config_dict(config_dict, warn=warn)
-    validation.validate(all_required_data, warn=warn)
+    validation.validate_protobuf(all_required_data, warn=warn)
 
     if check_set_flows and flow.flow_setpoints_sequence_key not in config_dict:
         raise ValueError('check_set_flows=True only valid if '
@@ -624,7 +636,8 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
 
     flow_setpoints_sequence = None
     if flow.flow_setpoints_sequence_key in config_dict:
-        port2flow_controller = flow.open_alicat_controllers(config_dict,
+
+        mfc_id2flow_controller = flow.open_alicat_controllers(config_dict,
             verbose=verbose
         )
 
@@ -633,7 +646,7 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         if not verbose:
             print('Initial ', end='')
 
-        flow.set_flow_setpoints(port2flow_controller,
+        flow.set_flow_setpoints(mfc_id2flow_controller,
             flow_setpoints_sequence[0], verbose=verbose
         )
         print()
@@ -796,7 +809,7 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
                         # MFCs were turned on.  or just always. just fit in the same
                         # line? or one line after?
                         flow.set_flow_setpoints(
-                            port2flow_controller,
+                            mfc_id2flow_controller,
                             flow_setpoints_sequence[trial_idx],
                             check_set_flows=check_set_flows,
                             verbose=verbose

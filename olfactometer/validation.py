@@ -168,18 +168,18 @@ except AttributeError:
     repeated_composite_container = containers.RepeatedCompositeFieldContainer
     repeated_scalar_container = containers.RepeatedScalarFieldContainer
 
-def validate(msg, warn=True, _first_call=True):
+def validate_protobuf(msg, warn=True, _first_call=True):
     """Raises ValueError if msg validation fails.
     """
     if isinstance(msg, repeated_composite_container):
         for value in msg:
-            validate(value, warn=warn, _first_call=False)
+            validate_protobuf(value, warn=warn, _first_call=False)
         return
     elif isinstance(msg, repeated_scalar_container):
         # Only iterating over and validating these elements to try to catch any
         # base-case types that I wasn't accounting for.
         for value in msg:
-            validate(value, warn=warn, _first_call=False)
+            validate_protobuf(value, warn=warn, _first_call=False)
         return
 
     try:
@@ -224,7 +224,7 @@ def validate(msg, warn=True, _first_call=True):
     # FieldDescriptor object, but we are using (the seemingly equivalent)
     # msg.DESCRIPTOR instead.
     for _, value in msg.ListFields():
-        validate(value, warn=warn, _first_call=False)
+        validate_protobuf(value, warn=warn, _first_call=False)
 
 
 def validate_flow_setpoints_sequence(flow_setpoints_sequence, warn=True):

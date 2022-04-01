@@ -7,26 +7,102 @@ import math
 from pprint import pprint
 
 from alicat import FlowController
+from serial.tools import list_ports
 
+from olfactometer import _DEBUG
 from olfactometer.generators import common
 
 
 flow_setpoints_sequence_key = 'flow_setpoints_sequence'
+using_addresses = None
 
-# TODO maybe add optional address (both kwargs, but require one, like [i think]
-# in alicat code?)
-_port2initial_get_output = dict()
-def open_alicat_controller(port, save_initial_setpoints=True,
-    check_gas_is_air=True, _skip_read_check=False, verbose=False):
-    """Returns opened alicat.FlowController for controller on input port.
+safe_usb_ids_key = 'safe_usb_ids_to_check_for_mfcs'
+# TODO specify whether they should be integer or str (former i think?)
+#
+# Must be set to iterable of tuples of (vendor ID, product ID) (for USB-to-serial
+# adapters that you know *only* could have MFCs or *NON-sensitive* equipment).
+#
+# We only search whitelisted interfaces so we don't send serial data to other equipment
+# (like the expensive laser) which could do something unexpected given the same input.
+# TODO update hardware config validation to also check these are in the right format
+# (and that they are in the range for USB ids too, ideally)
+# NOTE: currently this is set in olf (but only if generators used...)
+safe_usb_ids_to_check_for_mfcs = None
+
+_address2port = dict()
+_whitelist_ports = set()
+def find_port_for_controller_address(address, unsafe=False):
+
+    if safe_usb_ids_to_check_for_mfcs is None and not unsafe:
+        raise ValueError('flow.safe_usb_ids_to_check_for_mfcs must be set in order to '
+            'reference flow controllers by address (rather than by port). adding a list'
+            " like 'safe_usb_ids_to_check_for_mfcs: [[<vendor ID #1>, <product ID #1>]'"
+            ", ... ]' to your hardware config YAML, and this should be set for you"
+        )
+
+    if address in _address2port:
+        return _address2port[address]
+
+    if _DEBUG:
+        print('USB (vid, pid) whitelist, to allow searching for MFCs:')
+        pprint(safe_usb_ids_to_check_for_mfcs)
+
+    for port in sorted(list_ports.comports()):
+
+        if port.device in _address2port.values():
+            continue
+
+        if not (port.vid, port.pid) in safe_usb_ids_to_check_for_mfcs:
+            if _DEBUG:
+                print(f'vid={port.vid} pid={port.pid} of port {port.device} not in '
+                    'whitelist. skipping.'
+                )
+            continue
+
+        _whitelist_ports.add(port.device)
+
+        if not FlowController.is_connected(port.device, address=address):
+            continue
+
+        _address2port[address] = port.device
+        return port.device
+
+    raise IOError(f'no (whitelisted) port found for MFC address {address}')
+
+
+_mfc_id2initial_get_output = dict()
+def open_alicat_controller(mfc_id=None, *, port=None, address=None,
+    save_initial_setpoints=True, check_gas_is_air=True, _skip_read_check=False,
+    verbose=False):
+    """Returns opened alicat.FlowController for controller on input port/address.
 
     Also registers atexit function to close connection and restore previous setpoints.
 
     Unless save_initial_setpoints and check_gas_is_air are both False, queries the
-    controller to set corresponding entry in `_port2initial_get_output`.
+    controller to set corresponding entry in `_mfc_id2initial_get_output`.
     """
     if save_initial_setpoints or check_gas_is_air:
         _skip_read_check = False
+
+    if sum([x is not None for x in [mfc_id, port, address]]) != 1:
+        raise ValueError('specify exactly one of mfc_id, port, or address. mfc_id '
+            'will select between port/address behavior based on flow.using_addresses'
+        )
+
+    if mfc_id is not None:
+        if using_addresses is None:
+            raise RuntimeError('flow.using_addresses must be set True/False')
+
+        _using_addresses = using_addresses
+        if _using_addresses:
+            address = mfc_id
+        else:
+            port = mfc_id
+
+    elif port is None:
+        _using_addresses = True
+    else:
+        _using_addresses = False
 
     # TODO thread through expected vid/pid or other unique usb identifiers for
     # controllers / the adapters we are using to interface with them. either in
@@ -34,9 +110,15 @@ def open_alicat_controller(port, save_initial_setpoints=True,
     # vid=5296 pid=13328 for our startech 4x rs232 adapters (on downstairs 2p
     # windows 7 machine using my tom-f-oconnell/test/alicat_test.py script).
 
-    # Raies OSError under some conditions (maybe just via pyserial?)
-    c = FlowController(port=port)
+    # Raises OSError under some conditions (maybe just via pyserial?)
+    if _using_addresses:
+        port = find_port_for_controller_address(address)
+        c = FlowController(port=port, address=address)
+    else:
+        c = FlowController(port=port)
+
     atexit.register(c.close)
+
     # From some earlier testing, it seemed that first sign of incorrect opening
     # was often on first read, hence the read here without (necessarily) using
     # the values later.
@@ -61,7 +143,8 @@ def open_alicat_controller(port, save_initial_setpoints=True,
         if check_gas_is_air:
             gas = data['gas']
             if gas != 'Air':
-                raise RuntimeError('gas on MFC at port {port} was configured '
+                id_str = address if using_addresses else f'on {port}'
+                raise RuntimeError(f'gas on MFC {id_str} was configured '
                     f"to '{gas}', but was expecting 'Air'"
                 )
 
@@ -70,50 +153,69 @@ def open_alicat_controller(port, save_initial_setpoints=True,
         # sending setpoints. again, https://github.com/numat/alicat/issues/14
         # may be relevant.
 
-        _port2initial_get_output[port] = data
+        _mfc_id2initial_get_output[mfc_id] = data
 
     return c
 
 
-# TODO maybe initialize this w/ .get() in this open fn?
-# (currently just used in set_flow_setpoints)
-# TODO refactor into a class if i'm gonna have ~global state like this?
-_port2last_flow_rate = dict()
-def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
-    """Returns a dict of str port -> opened alicat.FlowController
+def get_mfc_id(mfc_trial_dict):
+    """Takes dict w/ config for one MFC at one trial to either port/address.
+
+    Requires that using_addresses is either True/False (set by open_alicat_controllers)
     """
+    if using_addresses is None:
+        raise RuntimeError('flow.using_addresses must be set True/False')
+
+    elif using_addresses:
+        return mfc_trial_dict['address']
+    else:
+        return mfc_trial_dict['port']
+
+
+# TODO refactor into a class if i'm gonna have ~global state like this?
+_mfc_id2last_flow_rate = dict()
+def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
+    """Returns a dict of str port/address -> opened alicat.FlowController
+    """
+    global using_addresses
+
     flow_setpoints_sequence = config_dict[flow_setpoints_sequence_key]
 
-    port_set = set()
-    port2flows = dict()
+    # olf.run will have called validate_flow_setpoints_sequence on the input already
+    # (via validate_config_dict), so we can assume that it is either all addresses or
+    # all ports, and that all trials have data for all MFCs (among other things).
+    using_addresses = 'address' in flow_setpoints_sequence[0][0]
+
+    mfc_id_set = set()
+    mfc_id2flows = dict()
     for trial_setpoints in flow_setpoints_sequence:
         for one_controller_setpoint in trial_setpoints:
-            port = one_controller_setpoint['port']
-            port_set.add(port)
+            mfc_id = get_mfc_id(one_controller_setpoint)
+            mfc_id_set.add(mfc_id)
 
             sccm = one_controller_setpoint['sccm']
-            if port not in port2flows:
-                port2flows[port] = [sccm]
+            if mfc_id not in mfc_id2flows:
+                mfc_id2flows[mfc_id] = [sccm]
             else:
-                port2flows[port].append(sccm)
+                mfc_id2flows[mfc_id].append(sccm)
 
     print('Opening flow controllers:')
-    port2flow_controller = dict()
-    sorted_ports = sorted(list(port_set))
-    for port in sorted_ports:
-        print(f'- {port} ...', end='', flush=True)
-        c = open_alicat_controller(port, _skip_read_check=_skip_read_check,
+    mfc_id2flow_controller = dict()
+    sorted_mfc_ids = sorted(list(mfc_id_set))
+    for mfc_id in sorted_mfc_ids:
+        print(f'- {mfc_id} ...', end='', flush=True)
+        c = open_alicat_controller(mfc_id, _skip_read_check=_skip_read_check,
             verbose=verbose
         )
-        port2flow_controller[port] = c
+        mfc_id2flow_controller[mfc_id] = c
         print('done', flush=True)
 
     # TODO maybe put behind verbose
     print('\n[min, max] requested flows (in mL/min) for each flow controller:')
-    for port in sorted_ports:
-        fmin = min(port2flows[port])
-        fmax = max(port2flows[port])
-        print(f'- {port}: [{fmin:.1f}, {fmax:.1f}]')
+    for mfc_id in sorted_mfc_ids:
+        fmin = min(mfc_id2flows[mfc_id])
+        fmax = max(mfc_id2flows[mfc_id])
+        print(f'- {mfc_id}: [{fmin:.1f}, {fmax:.1f}]')
     print()
 
     # TODO TODO somehow check all flow rates (min/max over course of sequence)
@@ -121,7 +223,16 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
     # TODO TODO also check resolution (may need to still have access to a
     # unparsed str copy of the variable... not sure)
 
-    return port2flow_controller
+    if _DEBUG:
+        whitelist_ports_without_mfcs = \
+            set(_whitelist_ports) - set(_address2port.values())
+
+        print('ports with whitelisted (vid, pid) pairs WITHOUT a flow controller with '
+            'one of the requested addresses:'
+        )
+        pprint(whitelist_ports_without_mfcs)
+
+    return mfc_id2flow_controller
 
 
 # TODO TODO maybe store data for how long each change of a setpoint took, to
@@ -130,12 +241,12 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
 # of setpoint, so would probably be good to have the electrical output of each
 # flow meter in thorsync, if that works on our models + alongside serial usage)
 _called_set_flow_setpoints = False
-def set_flow_setpoints(port2flow_controller, trial_setpoints,
+def set_flow_setpoints(mfc_id2flow_controller, trial_setpoints,
     check_set_flows=False, verbose=False):
 
     global _called_set_flow_setpoints
     if not _called_set_flow_setpoints:
-        atexit.register(restore_initial_setpoints, port2flow_controller,
+        atexit.register(restore_initial_setpoints, mfc_id2flow_controller,
             verbose=verbose
         )
         _called_set_flow_setpoints = True
@@ -148,12 +259,13 @@ def set_flow_setpoints(port2flow_controller, trial_setpoints,
 
     erred = False
     for one_controller_setpoint in trial_setpoints:
-        port = one_controller_setpoint['port']
+
+        mfc_id = get_mfc_id(one_controller_setpoint)
         sccm = one_controller_setpoint['sccm']
 
         unchanged = False
-        if port in _port2last_flow_rate:
-            last_sccm = _port2last_flow_rate[port]
+        if mfc_id in _mfc_id2last_flow_rate:
+            last_sccm = _mfc_id2last_flow_rate[mfc_id]
             if last_sccm == sccm:
                 unchanged = True
 
@@ -161,19 +273,19 @@ def set_flow_setpoints(port2flow_controller, trial_setpoints,
             # TODO TODO change float formatting to reflect achievable precision
             # (including both hardware and any loss of precision limitations of
             # numat/alicat api)
-            cstr = f'- {port}: {sccm:.1f} mL/min'
+            cstr = f'- {mfc_id}: {sccm:.1f} mL/min'
             if unchanged:
                 cstr += ' (unchanged)'
             print(cstr)
         else:
             # TODO maybe still show at least .1f if any inputs have that kind
             # of precision?
-            short_strs.append(f'{port}={sccm:.0f}')
+            short_strs.append(f'{mfc_id}={sccm:.0f}')
 
         if unchanged:
             continue
 
-        c = port2flow_controller[port]
+        c = mfc_id2flow_controller[mfc_id]
         # TODO TODO TODO convert units + make sure i'm calling in the way
         # to achieve the best precision
         # see: https://github.com/numat/alicat/issues/14
@@ -188,7 +300,7 @@ def set_flow_setpoints(port2flow_controller, trial_setpoints,
             erred = True
             continue
 
-        _port2last_flow_rate[port] = sccm
+        _mfc_id2last_flow_rate[mfc_id] = sccm
 
         # TODO TODO TODO shouldn't i need to wait some amount of time for it to achieve
         # the setpoint? what value is appropriate?
@@ -214,21 +326,22 @@ def set_flow_setpoints(port2flow_controller, trial_setpoints,
         )
 
 
+# TODO TODO TODO update to work w/ addresses too (/ at least rename)
 # TODO if i ever set gas (or anything beyond set points) rename to
 # restore_initial_flowcontroller_settings or something + also restore those
 # things here
-def restore_initial_setpoints(port2flow_controller, verbose=False):
+def restore_initial_setpoints(mfc_id2flow_controller, verbose=False):
     """Restores setpoints populated on opening each controller.
     """
     if verbose:
         print('Restoring initial flow controller set points:')
 
-    for port, c in port2flow_controller.items():
-        initial_setpoint = _port2initial_get_output[port]['setpoint']
+    for mfc_id, c in mfc_id2flow_controller.items():
+        initial_setpoint = _mfc_id2initial_get_output[mfc_id]['setpoint']
 
         if verbose:
             # maybe isn't always really mL/min across all our MFCs...
-            print(f'- {port}: {initial_setpoint:.1f} mL/min')
+            print(f'- {mfc_id}: {initial_setpoint:.1f} mL/min')
 
         c.set_flow_rate(initial_setpoint)
 
@@ -285,7 +398,7 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
     # - warning if using ports rather than addresses
     # TODO refactor
     using_addresses = None
-    def get_mfc_id(key_prefix):
+    def _get_mfc_id(key_prefix):
         nonlocal using_addresses
         already_found = False
         mfc_id = None
@@ -312,8 +425,8 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
 
         return mfc_id
 
-    carrier_mfc_id = get_mfc_id('carrier_flow_controller_')
-    odor_mfc_ids = sorted([get_mfc_id(p) for p in odor_mfc_prefixes])
+    carrier_mfc_id = _get_mfc_id('carrier_flow_controller_')
+    odor_mfc_ids = sorted([_get_mfc_id(p) for p in odor_mfc_prefixes])
 
     assert using_addresses is not None
 
