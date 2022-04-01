@@ -629,8 +629,6 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         pyperclip.copy(config)
         print(f'Copied {config} to clipboard\n')
 
-        util.write_last_attempted_config_file(config)
-
     util.print_pins2odors(config_dict)
     print()
 
@@ -644,6 +642,12 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         # TODO maybe prompt user to connect arduino if after Enter is pressed
         # here, the serial device would fail to be found in the next line
         input('Press Enter once the odors are connected')
+
+    # Want this to happen after we press Enter (when we do), so that we can show the
+    # pins -> odors for a few (started in parallel), but only re-run the config we were
+    # actually trying to run.
+    if type(config) is str:
+        util.write_last_attempted_config_file(config)
 
     if not settings.follow_hardware_timing:
         # TODO factor this + above calculation of duration into separate CLI util
