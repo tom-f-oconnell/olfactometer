@@ -75,6 +75,7 @@ def open_alicat_controller(port, save_initial_setpoints=True,
 
 # TODO maybe initialize this w/ .get() in this open fn?
 # (currently just used in set_flow_setpoints)
+# TODO refactor into a class if i'm gonna have ~global state like this?
 _port2last_flow_rate = dict()
 def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
     """Returns a dict of str port -> opened alicat.FlowController
