@@ -13,6 +13,9 @@ from olfactometer import _DEBUG
 from olfactometer.generators import common
 
 
+# TODO use alicat mock.py contents to allow testing (if _DEBUG) flow stuff w/o flow
+# controllers connected
+
 flow_setpoints_sequence_key = 'flow_setpoints_sequence'
 using_addresses = None
 
@@ -249,7 +252,7 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
         )
         pprint(whitelist_ports_without_mfcs)
 
-    # TODO probably refactor opening logic to not have this function also doing double
+    # TODO TODO refactor opening logic to not have this function also doing double
     # duty in this way that doesn't make too much sense
     return mfc_id2flow_controller, are_flows_constant
 

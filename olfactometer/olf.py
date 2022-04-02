@@ -639,14 +639,6 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         if verbose:
             print(f'Baud rate (parsed from Arduino sketch): {baud_rate}\n')
 
-    flow_setpoints_sequence = None
-    if flow.flow_setpoints_sequence_key in config_dict:
-
-        mfc_id2flow_controller, are_flows_constant = flow.open_alicat_controllers(
-            config_dict, verbose=verbose
-        )
-        flow_setpoints_sequence = config_dict[flow.flow_setpoints_sequence_key]
-
     expected_duration_s = util.time_config_will_take_s(all_required_data, print_=True)
 
     # It's a file in this case, and we are copying the file path to the clipboard.
@@ -669,9 +661,16 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         # here, the serial device would fail to be found in the next line
         input('Press Enter once the odors are connected')
 
-    # Setting initial flows, if specified.
+    # Opening flow controllers and setting initial flows.
     # Want this to happen after Enter press for the same reason as below.
-    if flow_setpoints_sequence is not None:
+    flow_setpoints_sequence = None
+    if flow.flow_setpoints_sequence_key in config_dict:
+
+        mfc_id2flow_controller, are_flows_constant = flow.open_alicat_controllers(
+            config_dict, verbose=verbose
+        )
+        flow_setpoints_sequence = config_dict[flow.flow_setpoints_sequence_key]
+
         if not verbose:
             print('Initial ', end='')
 
