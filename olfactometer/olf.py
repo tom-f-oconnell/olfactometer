@@ -678,11 +678,11 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         flow.set_flow_setpoints(mfc_id2flow_controller,
             flow_setpoints_sequence[0], verbose=verbose
         )
-        print()
 
         # TODO TODO replace w/ checking flows and continuing once they get within some
         # tolerance
-        mfc_settling_wait_s = 1.0
+        # TODO skip if current flows (read before Enter) are same as requested?
+        mfc_settling_wait_s = 2.0
         print(f'Waiting {mfc_settling_wait_s:.1f}s for MFCs to reach set points...',
             end='', flush=True
         )
@@ -828,7 +828,7 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
                             mfc_id2flow_controller,
                             flow_setpoints_sequence[trial_idx],
                             check_set_flows=check_set_flows,
-                            silent=not are_flows_constant,
+                            silent=are_flows_constant,
                             verbose=verbose,
                         )
                         if not are_flows_constant:

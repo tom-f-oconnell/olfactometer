@@ -226,7 +226,7 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
         print('done', flush=True)
 
     are_flows_constant = _are_flows_constant(mfc_id2flows)
-    if are_flows_constant:
+    if not are_flows_constant:
         # TODO maybe put behind verbose
         print('\n[min, max] requested flows (in mL/min) for each flow controller:')
         for mfc_id in sorted_mfc_ids:
@@ -351,7 +351,6 @@ def set_flow_setpoints(mfc_id2flow_controller, trial_setpoints,
         )
 
 
-# TODO TODO TODO update to work w/ addresses too (/ at least rename)
 # TODO if i ever set gas (or anything beyond set points) rename to
 # restore_initial_flowcontroller_settings or something + also restore those
 # things here
