@@ -380,6 +380,7 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
         if generator_yaml_dict.get('require_flow_controllers', False):
             raise
         else:
+            # TODO test formatting is what i want
             warnings.warn(err)
 
     save_generator_output = generator_yaml_dict.get(
@@ -641,19 +642,10 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
     flow_setpoints_sequence = None
     if flow.flow_setpoints_sequence_key in config_dict:
 
-        mfc_id2flow_controller = flow.open_alicat_controllers(config_dict,
-            verbose=verbose
+        mfc_id2flow_controller, are_flows_constant = flow.open_alicat_controllers(
+            config_dict, verbose=verbose
         )
-
         flow_setpoints_sequence = config_dict[flow.flow_setpoints_sequence_key]
-
-        if not verbose:
-            print('Initial ', end='')
-
-        flow.set_flow_setpoints(mfc_id2flow_controller,
-            flow_setpoints_sequence[0], verbose=verbose
-        )
-        print()
 
     expected_duration_s = util.time_config_will_take_s(all_required_data, print_=True)
 
@@ -676,6 +668,26 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         # TODO maybe prompt user to connect arduino if after Enter is pressed
         # here, the serial device would fail to be found in the next line
         input('Press Enter once the odors are connected')
+
+    # Setting initial flows, if specified.
+    # Want this to happen after Enter press for the same reason as below.
+    if flow_setpoints_sequence is not None:
+        if not verbose:
+            print('Initial ', end='')
+
+        flow.set_flow_setpoints(mfc_id2flow_controller,
+            flow_setpoints_sequence[0], verbose=verbose
+        )
+        print()
+
+        # TODO TODO replace w/ checking flows and continuing once they get within some
+        # tolerance
+        mfc_settling_wait_s = 1.0
+        print(f'Waiting {mfc_settling_wait_s:.1f}s for MFCs to reach set points...',
+            end='', flush=True
+        )
+        time.sleep(mfc_settling_wait_s)
+        print('done', flush=True)
 
     # Want this to happen after we press Enter (when we do), so that we can show the
     # pins -> odors for a few (started in parallel), but only re-run the config we were
@@ -808,17 +820,19 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
                     #print('trial_idx:', trial_idx)
 
                     if flow_setpoints_sequence is not None:
-                        # TODO TODO even if not verbose, should print something if flow
-                        # is anything other than either default or initial flows when
-                        # MFCs were turned on.  or just always. just fit in the same
-                        # line? or one line after?
+                        # TODO even if not verbose, should print something if flow is
+                        # anything other than either default or initial flows when MFCs
+                        # were turned on. or just always. just fit in the same line? or
+                        # one line after?
                         flow.set_flow_setpoints(
                             mfc_id2flow_controller,
                             flow_setpoints_sequence[trial_idx],
                             check_set_flows=check_set_flows,
-                            verbose=verbose
+                            silent=not are_flows_constant,
+                            verbose=verbose,
                         )
-                        print()
+                        if not are_flows_constant:
+                            print()
 
                     last_trial_idx = trial_idx
                     seen_trial_indices.add(trial_idx)

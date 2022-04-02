@@ -178,6 +178,15 @@ def get_mfc_id(mfc_trial_dict):
         return mfc_trial_dict['port']
 
 
+def _are_flows_constant(mfc_id2flows):
+    """True if each MFC only has one flow for the whole experiment, False otherwise.
+    """
+    for one_mfc_trial_flows in mfc_id2flows.values():
+        if not all([x == one_mfc_trial_flows[0] for x in one_mfc_trial_flows]):
+            return False
+    return True
+
+
 # TODO refactor into a class if i'm gonna have ~global state like this?
 _mfc_id2last_flow_rate = dict()
 def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
@@ -216,13 +225,15 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
         mfc_id2flow_controller[mfc_id] = c
         print('done', flush=True)
 
-    # TODO maybe put behind verbose
-    print('\n[min, max] requested flows (in mL/min) for each flow controller:')
-    for mfc_id in sorted_mfc_ids:
-        fmin = min(mfc_id2flows[mfc_id])
-        fmax = max(mfc_id2flows[mfc_id])
-        print(f'- {mfc_id}: [{fmin:.1f}, {fmax:.1f}]')
-    print()
+    are_flows_constant = _are_flows_constant(mfc_id2flows)
+    if are_flows_constant:
+        # TODO maybe put behind verbose
+        print('\n[min, max] requested flows (in mL/min) for each flow controller:')
+        for mfc_id in sorted_mfc_ids:
+            fmin = min(mfc_id2flows[mfc_id])
+            fmax = max(mfc_id2flows[mfc_id])
+            print(f'- {mfc_id}: [{fmin:.1f}, {fmax:.1f}]')
+        print()
 
     # TODO TODO somehow check all flow rates (min/max over course of sequence)
     # are within device ranges
@@ -238,7 +249,9 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
         )
         pprint(whitelist_ports_without_mfcs)
 
-    return mfc_id2flow_controller
+    # TODO probably refactor opening logic to not have this function also doing double
+    # duty in this way that doesn't make too much sense
+    return mfc_id2flow_controller, are_flows_constant
 
 
 # TODO TODO maybe store data for how long each change of a setpoint took, to
@@ -248,7 +261,11 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
 # flow meter in thorsync, if that works on our models + alongside serial usage)
 _called_set_flow_setpoints = False
 def set_flow_setpoints(mfc_id2flow_controller, trial_setpoints,
-    check_set_flows=False, verbose=False):
+    check_set_flows=False, silent=False, verbose=False):
+    """
+    Args:
+        silent: if True, overrides verbose and nothing is printed at all
+    """
 
     global _called_set_flow_setpoints
     if not _called_set_flow_setpoints:
@@ -257,11 +274,12 @@ def set_flow_setpoints(mfc_id2flow_controller, trial_setpoints,
         )
         _called_set_flow_setpoints = True
 
-    if verbose:
-        print('setting trial flow controller setpoints:')
-    else:
-        print('flows (mL/min): ', end='')
-        short_strs = []
+    if not silent:
+        if verbose:
+            print('setting trial flow controller setpoints:')
+        else:
+            print('flows (mL/min): ', end='')
+            short_strs = []
 
     erred = False
     for one_controller_setpoint in trial_setpoints:
@@ -275,18 +293,19 @@ def set_flow_setpoints(mfc_id2flow_controller, trial_setpoints,
             if last_sccm == sccm:
                 unchanged = True
 
-        if verbose:
-            # TODO TODO change float formatting to reflect achievable precision
-            # (including both hardware and any loss of precision limitations of
-            # numat/alicat api)
-            cstr = f'- {mfc_id}: {sccm:.1f} mL/min'
-            if unchanged:
-                cstr += ' (unchanged)'
-            print(cstr)
-        else:
-            # TODO maybe still show at least .1f if any inputs have that kind
-            # of precision?
-            short_strs.append(f'{mfc_id}={sccm:.0f}')
+        if not silent:
+            if verbose:
+                # TODO TODO change float formatting to reflect achievable precision
+                # (including both hardware and any loss of precision limitations of
+                # numat/alicat api)
+                cstr = f'- {mfc_id}: {sccm:.1f} mL/min'
+                if unchanged:
+                    cstr += ' (unchanged)'
+                print(cstr)
+            else:
+                # TODO maybe still show at least .1f if any inputs have that kind
+                # of precision?
+                short_strs.append(f'{mfc_id}={sccm:.0f}')
 
         if unchanged:
             continue
@@ -320,10 +339,10 @@ def set_flow_setpoints(mfc_id2flow_controller, trial_setpoints,
                     f'{data["set_point"]:.1f}'
                 )
 
-            if verbose:
+            if not silent and verbose:
                 print('setpoint check OK')
 
-    if not verbose:
+    if not silent and not verbose:
         print(','.join(short_strs))
 
     if erred:
