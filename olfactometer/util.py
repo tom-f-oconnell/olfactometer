@@ -241,12 +241,26 @@ def print_pins2odors(config_dict, header=True, **format_odor_kwargs):
 # and pins2odors, and prints it all nicely
 
 
-def get_last_attempted_cache_fname():
-    """Returns a Path object for storing last attempted config file (for re-running)
+def user_data_dir(mkdir=False):
+    """Returns a Path to a directory for storing application state.
+
+    Args:
+        mkdir: if True, make directory (no error if already exists).
     """
     app_name = 'olf'
     app_author = 'tom-f-oconnell'
     app_data_dir = Path(appdirs.user_data_dir(app_name, app_author))
+
+    if mkdir:
+        app_data_dir.mkdir(parents=True, exist_ok=True)
+
+    return app_data_dir
+
+
+def get_last_attempted_cache_fname():
+    """Returns a Path object for storing last attempted config file (for re-running)
+    """
+    app_data_dir = user_data_dir()
     last_attempted_cache_fname = app_data_dir / 'last_attempted_config_filename'
     return last_attempted_cache_fname
 
@@ -289,10 +303,7 @@ def write_last_attempted_config_file(config_fname) -> None:
         )
         return
 
-    last_attempted_cache_fname = get_last_attempted_cache_fname()
-
-    app_data_dir = last_attempted_cache_fname.parents[0]
-    app_data_dir.mkdir(parents=True, exist_ok=True)
+    last_attempted_cache_fname = get_last_attempted_cache_fname(mkdir=True)
 
     cache_contents = f'{config_fname}\n{Path(config_fname).resolve()}'
     last_attempted_cache_fname.write_text(cache_contents)
