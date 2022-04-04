@@ -33,6 +33,17 @@ safe_usb_ids_key = 'safe_usb_ids_to_check_for_mfcs'
 # NOTE: currently this is set in olf (but only if generators used...)
 safe_usb_ids_to_check_for_mfcs = None
 
+# This cost is incurrent 6 times in checking whether a FlowMeter is connected
+# (two <flowmeter>.get() calls, w/ currently-unchangeable 2 retries for each)
+# Default is 1s. 0.1s is about twice what I've seen a single get call take (in some
+# limited testing).
+# NOTE: requires my fork of alicat library to be able to pass this to
+# FlowMeter.__init__. This dependency should be handled by setup.py.
+# Also, this doesn't actually make the _readline call take any less time, because
+# FlowMeter reads the characters one by one, so this timeout doesn't apply to the
+# overall reading process.
+read_timeout_s = 0.1
+
 _address2port = dict()
 _whitelist_ports = set()
 # TODO cache com port each was found on last to user data, and check those first,
@@ -68,7 +79,10 @@ def find_port_for_controller_address(address, unsafe=False):
 
         _whitelist_ports.add(port.device)
 
-        if not FlowController.is_connected(port.device, address=address):
+        # NOTE: this also requires my alicat fork for the timeout kwarg
+        if not FlowController.is_connected(port.device, address=address,
+            timeout=read_timeout_s):
+
             continue
 
         if _DEBUG:
@@ -113,17 +127,6 @@ def open_alicat_controller(mfc_id=None, *, port=None, address=None,
         _using_addresses = True
     else:
         _using_addresses = False
-
-    # This cost is incurrent 6 times in checking whether a FlowMeter is connected
-    # (two <flowmeter>.get() calls, w/ currently-unchangeable 2 retries for each)
-    # Default is 1s. 0.1s is about twice what I've seen a single get call take (in some
-    # limited testing).
-    # NOTE: requires my fork of alicat library to be able to pass this to
-    # FlowMeter.__init__. This dependency should be handled by setup.py.
-    # Also, this doesn't actually make the _readline call take any less time,
-    # because FlowMeter reads the characters one by one, so this timeout doesn't
-    # apply to the overall reading process.
-    read_timeout_s = 0.1
 
     # Raises OSError under some conditions (maybe just via pyserial?)
     if _using_addresses:
