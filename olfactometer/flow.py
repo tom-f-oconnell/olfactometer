@@ -11,9 +11,8 @@ from alicat import FlowController
 from serial.tools import list_ports
 import yaml
 
-from olfactometer import _DEBUG
+from olfactometer import util, _DEBUG
 from olfactometer.generators import common
-from olfactometer.util import user_data_dir
 
 
 # TODO use alicat mock.py contents to allow testing (if _DEBUG) flow stuff w/o flow
@@ -212,7 +211,7 @@ def _are_flows_constant(mfc_id2flows):
 
 
 def _last_address2port_cache_fname(mkdir=False):
-    return user_data_dir(mkdir=mkdir) / 'last_address2port.yaml'
+    return util.user_data_dir(mkdir=mkdir) / 'last_address2port.yaml'
 
 
 # TODO refactor into a class if i'm gonna have ~global state like this?
