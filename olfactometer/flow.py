@@ -9,9 +9,11 @@ import time
 
 from alicat import FlowController
 from serial.tools import list_ports
+import yaml
 
 from olfactometer import _DEBUG
 from olfactometer.generators import common
+from olfactometer.util import user_data_dir
 
 
 # TODO use alicat mock.py contents to allow testing (if _DEBUG) flow stuff w/o flow
@@ -39,16 +41,11 @@ safe_usb_ids_to_check_for_mfcs = None
 # limited testing).
 # NOTE: requires my fork of alicat library to be able to pass this to
 # FlowMeter.__init__. This dependency should be handled by setup.py.
-# Also, this doesn't actually make the _readline call take any less time, because
-# FlowMeter reads the characters one by one, so this timeout doesn't apply to the
-# overall reading process.
 read_timeout_s = 0.1
 
 _address2port = dict()
 _whitelist_ports = set()
-# TODO cache com port each was found on last to user data, and check those first,
-# to save time
-def find_port_for_controller_address(address, unsafe=False):
+def find_port_for_controller_address(address, unsafe=False, _last_port=None):
 
     if safe_usb_ids_to_check_for_mfcs is None and not unsafe:
         raise ValueError('flow.safe_usb_ids_to_check_for_mfcs must be set in order to '
@@ -63,8 +60,23 @@ def find_port_for_controller_address(address, unsafe=False):
     if _DEBUG:
         print(f'searching for MFC with address {address}')
 
-    for port in sorted(list_ports.comports()):
+    ports = sorted(list_ports.comports())
 
+    if _last_port is not None:
+
+        last_port_obj = None
+        other_port_objs = []
+        for p in ports:
+            if p.device == _last_port:
+                last_port_obj = p
+            else:
+                other_port_objs.append(p)
+
+        if last_port_obj is not None:
+            # Just re-ordering to try the last known port first, if it's provided.
+            ports = [last_port_obj] + other_port_objs
+
+    for port in ports:
         if port.device in _address2port.values():
             continue
 
@@ -97,7 +109,7 @@ def find_port_for_controller_address(address, unsafe=False):
 _mfc_id2initial_get_output = dict()
 def open_alicat_controller(mfc_id=None, *, port=None, address=None,
     save_initial_setpoints=True, check_gas_is_air=True, _skip_read_check=False,
-    verbose=False):
+    _last_port=None, verbose=False):
     """Returns opened alicat.FlowController for controller on input port/address.
 
     Also registers atexit function to close connection and restore previous setpoints.
@@ -130,7 +142,7 @@ def open_alicat_controller(mfc_id=None, *, port=None, address=None,
 
     # Raises OSError under some conditions (maybe just via pyserial?)
     if _using_addresses:
-        port = find_port_for_controller_address(address)
+        port = find_port_for_controller_address(address, _last_port=_last_port)
         c = FlowController(port=port, address=address, timeout=read_timeout_s)
     else:
         c = FlowController(port=port, timeout=read_timeout_s)
@@ -199,6 +211,10 @@ def _are_flows_constant(mfc_id2flows):
     return True
 
 
+def _last_address2port_cache_fname(mkdir=False):
+    return user_data_dir(mkdir=mkdir) / 'last_address2port.yaml'
+
+
 # TODO refactor into a class if i'm gonna have ~global state like this?
 _mfc_id2last_flow_rate = dict()
 def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
@@ -206,11 +222,23 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
     """
     global using_addresses
 
+    cache_fname = _last_address2port_cache_fname(mkdir=True)
+    last_address2port = None
+    if cache_fname.exists():
+        with open(cache_fname, 'r') as f:
+            last_address2port = yaml.safe_load(f)
+            assert type(last_address2port) is dict
+
+        if _DEBUG:
+            print(f'address->port read from cache at {cache_fname}:')
+            pprint(last_address2port)
+
     flow_setpoints_sequence = config_dict[flow_setpoints_sequence_key]
 
     # olf.run will have called validate_flow_setpoints_sequence on the input already
     # (via validate_config_dict), so we can assume that it is either all addresses or
     # all ports, and that all trials have data for all MFCs (among other things).
+    # TODO maybe just replace w/ module level one? if at least for consistency...
     using_addresses = 'address' in flow_setpoints_sequence[0][0]
 
     mfc_id_set = set()
@@ -233,13 +261,22 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
     print('Opening flow controllers:')
     mfc_id2flow_controller = dict()
     sorted_mfc_ids = sorted(list(mfc_id_set))
+
     for mfc_id in sorted_mfc_ids:
+        last_port = None
+        if using_addresses and last_address2port is not None:
+            last_port = last_address2port[mfc_id]
+
         print(f'- {mfc_id} ...', end='', flush=True)
         c = open_alicat_controller(mfc_id, _skip_read_check=_skip_read_check,
-            verbose=verbose
+            _last_port=last_port, verbose=verbose
         )
         mfc_id2flow_controller[mfc_id] = c
         print('done', flush=True)
+
+    with open(cache_fname, 'w') as f:
+        # _address2port populated in the open_alicat_controller calls above
+        yaml.safe_dump(_address2port, f)
 
     if _DEBUG:
         took_s = time.time() - start_s
