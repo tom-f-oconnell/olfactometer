@@ -5,6 +5,7 @@ Functions for controlling flows via Alicat mass flow controllers (MFCs).
 import atexit
 import math
 from pprint import pprint
+import time
 
 from alicat import FlowController
 from serial.tools import list_ports
@@ -119,6 +120,9 @@ def open_alicat_controller(mfc_id=None, *, port=None, address=None,
     # limited testing).
     # NOTE: requires my fork of alicat library to be able to pass this to
     # FlowMeter.__init__. This dependency should be handled by setup.py.
+    # Also, this doesn't actually make the _readline call take any less time,
+    # because FlowMeter reads the characters one by one, so this timeout doesn't
+    # apply to the overall reading process.
     read_timeout_s = 0.1
 
     # Raises OSError under some conditions (maybe just via pyserial?)
@@ -220,6 +224,9 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
             else:
                 mfc_id2flows[mfc_id].append(sccm)
 
+    if _DEBUG:
+        start_s = time.time()
+
     print('Opening flow controllers:')
     mfc_id2flow_controller = dict()
     sorted_mfc_ids = sorted(list(mfc_id_set))
@@ -232,6 +239,9 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
         print('done', flush=True)
 
     if _DEBUG:
+        took_s = time.time() - start_s
+        print(f'opening flow controllers took {took_s:.2f}s')
+
         whitelist_ports_without_mfcs = \
             set(_whitelist_ports) - set(_address2port.values())
 

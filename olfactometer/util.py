@@ -257,10 +257,10 @@ def user_data_dir(mkdir=False):
     return app_data_dir
 
 
-def get_last_attempted_cache_fname():
+def get_last_attempted_cache_fname(mkdir=False):
     """Returns a Path object for storing last attempted config file (for re-running)
     """
-    app_data_dir = user_data_dir()
+    app_data_dir = user_data_dir(mkdir=mkdir)
     last_attempted_cache_fname = app_data_dir / 'last_attempted_config_filename'
     return last_attempted_cache_fname
 
