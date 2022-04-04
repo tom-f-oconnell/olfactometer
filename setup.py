@@ -32,7 +32,9 @@ setup(
         # here)
         'nanopb==0.4.4',
 
-        'alicat',
+        # Using the version from my fork, so that I can specify read timeout in
+        # FlowMeter constructor.
+        'alicat @ git+https://github.com/tom-f-oconnell/alicat',
 
         'pyperclip',
 

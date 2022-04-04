@@ -113,18 +113,20 @@ def open_alicat_controller(mfc_id=None, *, port=None, address=None,
     else:
         _using_addresses = False
 
-    # TODO thread through expected vid/pid or other unique usb identifiers for
-    # controllers / the adapters we are using to interface with them. either in
-    # env vars / hardware config / both. if using vid/pid, i measured
-    # vid=5296 pid=13328 for our startech 4x rs232 adapters (on downstairs 2p
-    # windows 7 machine using my tom-f-oconnell/test/alicat_test.py script).
+    # This cost is incurrent 6 times in checking whether a FlowMeter is connected
+    # (two <flowmeter>.get() calls, w/ currently-unchangeable 2 retries for each)
+    # Default is 1s. 0.1s is about twice what I've seen a single get call take (in some
+    # limited testing).
+    # NOTE: requires my fork of alicat library to be able to pass this to
+    # FlowMeter.__init__. This dependency should be handled by setup.py.
+    read_timeout_s = 0.1
 
     # Raises OSError under some conditions (maybe just via pyserial?)
     if _using_addresses:
         port = find_port_for_controller_address(address)
-        c = FlowController(port=port, address=address)
+        c = FlowController(port=port, address=address, timeout=read_timeout_s)
     else:
-        c = FlowController(port=port)
+        c = FlowController(port=port, timeout=read_timeout_s)
 
     atexit.register(c.close)
 
@@ -157,7 +159,7 @@ def open_alicat_controller(mfc_id=None, *, port=None, address=None,
                     f"to '{gas}', but was expecting 'Air'"
                 )
 
-        # TODO TODO TODO TODO if need be, to minimize loss of precision, check
+        # TODO TODO TODO if need be, to minimize loss of precision, check
         # that device units are configured correctly for how we are planning on
         # sending setpoints. again, https://github.com/numat/alicat/issues/14
         # may be relevant.
@@ -211,6 +213,7 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
             mfc_id = get_mfc_id(one_controller_setpoint)
             mfc_id_set.add(mfc_id)
 
+            # TODO factor out
             sccm = one_controller_setpoint['sccm']
             if mfc_id not in mfc_id2flows:
                 mfc_id2flows[mfc_id] = [sccm]
@@ -228,6 +231,16 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
         mfc_id2flow_controller[mfc_id] = c
         print('done', flush=True)
 
+    if _DEBUG:
+        whitelist_ports_without_mfcs = \
+            set(_whitelist_ports) - set(_address2port.values())
+
+        print('ports with whitelisted (vid, pid) pairs WITHOUT a flow controller with '
+            'one of the requested addresses:'
+        )
+        pprint(whitelist_ports_without_mfcs)
+
+    # TODO factor out
     are_flows_constant = _are_flows_constant(mfc_id2flows)
     if not are_flows_constant:
         # TODO maybe put behind verbose
@@ -242,15 +255,6 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
     # are within device ranges
     # TODO TODO also check resolution (may need to still have access to a
     # unparsed str copy of the variable... not sure)
-
-    if _DEBUG:
-        whitelist_ports_without_mfcs = \
-            set(_whitelist_ports) - set(_address2port.values())
-
-        print('ports with whitelisted (vid, pid) pairs WITHOUT a flow controller with '
-            'one of the requested addresses:'
-        )
-        pprint(whitelist_ports_without_mfcs)
 
     # TODO TODO refactor opening logic to not have this function also doing double
     # duty in this way that doesn't make too much sense
