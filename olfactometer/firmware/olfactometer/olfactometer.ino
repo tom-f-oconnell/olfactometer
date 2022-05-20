@@ -418,38 +418,17 @@ void setup() {
     // https://www.codeproject.com/articles/1012319/arduino-software-reset
     wdt_disable();
 
-    // Looks like pin 13 defaults to OUTPUT and HIGH, but I don't want that, in
-    // case it's (for example) the timing_output_pin
-    // TODO make this hardware target specific if others dont have that behavior
-    // Just setting it to an INPUT didn't seem sufficient...
-    // Still seems to blink a bit on serial connection initiation... avoidable?
-    // TODO use different pin if it really matters
-    /*
-    pinMode(13, OUTPUT);
-    digitalWrite(13, LOW);
-    */
-
-    // hack to try to prevent the flipper mirror (currently on pin 33) from
-    // switching (if left in mode where it can be controlled by this pin...)
-    // TODO TODO TODO why didn't this even work? are my electronics screwed up
-    // somewhere? something else unexpectedly using pin 33? small changes in
-    // voltage to do non-ideal electronics and low flipper mirror digital
-    // thresholds? maybe the fact that remy's (unpowered) arduino is also
-    // connected in parallel has something to do with it? bootloader?
-    // maybe oscilloscope this...
-    // TODO delete. try to set all pins to OUTPUT, LOW (how to find all
-    // available pins though? or can i rely on no-op for pinMode w/ invalid
-    // pins?). or just leave floating till i use this pin...
-    //pinMode(33, OUTPUT);
-    //digitalWrite(33, LOW);
-    //
-
     // TODO find some way to write all digital pins this has access to low
     // (on the particular hardware uploaded to)
     // hack to fix issue of recording starting immediately (b/c thorsync reads
     // recording_indicator_pin as ~1-2v, and that triggers it). these should be
     // recording_indicator_pin and timing_output_pin, with the settings i'm
     // currently using.
+    // TODO 2022-04-04: delete, but test it doesn't break the upstairs setup, where pin
+    // 33 is actually recording_indicator_pin. downstairs currently is using 36 for
+    // that, which isn't mentioned here, so it would seem to be unnecessary (though
+    // maybe it could fix that issue where the recording ~randomly seems to not trigger
+    // sometimes? or is that just bad wiring?)
     pinMode(20, OUTPUT);
     pinMode(21, OUTPUT);
     pinMode(30, OUTPUT);
@@ -467,9 +446,9 @@ void setup() {
     Serial.begin(115200);
     Serial.println(version_str);
 
-    // TODO maybe print some message to identify this device + the software
-    // version? maybe even available pins (though not sure how to calculate...
-    // maybe just hardcode based on a few hardware targets?)?
+    // TODO maybe print some message to identify this device? maybe even available pins
+    // (though not sure how to calculate... maybe just hardcode based on a few hardware
+    // targets?)?
 
     // If `i` is of type uint8_t, with MAX_NUM_PINS == 256, this seems to not
     // terminate (presumably because wraparound at the very last i++ (when loop
@@ -581,10 +560,6 @@ void setup() {
     }
 
     if (follow_hardware_timing) {
-        // TODO is this actually necessary? it's the default right?
-        // but then how was pin 13 on the arduino high until even with code not
-        // explicitly setting it to an input? hysteresis or special case of that
-        // pin (cause LED)?
         pinMode(external_timing_pin, INPUT);
 
         // TODO does this persist across resets? need to explicitly initialize
@@ -598,15 +573,6 @@ void setup() {
         // not be reached, as intended.
         run_sequence();
     }
-
-    // for testing ISR with just one arduino (connect 3<->external_timing_pin)
-    /*
-    delay(3000);
-    pinMode(3, OUTPUT);
-    */
-    #ifdef DEBUG_PRINTS
-    Serial.println("end of setup");
-    #endif
 }
 
 int last_isr_count = -1;
