@@ -8,6 +8,7 @@ import os
 from os.path import split, join, isdir, isfile, splitext
 import sys
 import tempfile
+from pprint import pformat
 
 from google.protobuf import json_format
 import yaml
@@ -25,16 +26,13 @@ from olfactometer import olf_pb2
 HARDWARE_DIR_ENVVAR = 'OLFACTOMETER_HARDWARE_DIR'
 DEFAULT_HARDWARE_ENVVAR = 'OLFACTOMETER_DEFAULT_HARDWARE'
 
-def load_hardware_config(hardware_config=None, required=False):
+def load_hardware_config(hardware_config=None):
     """Returns dict loaded from YAML hardware config or None if no config.
 
     Args:
     hardware_config (optional str): (default=`None`) path to YAML config file,
         or prefix of one of the YAML files under `HARDWARE_DIR_ENVVAR`.
         If `None`, will try `HARDWARE_DIR_ENVVAR` and `DEFAULT_HARDWARE_ENVVAR`.
-
-    required (optional bool): (default=`False`) if `True`, will raise `IOError`,
-        rather than returning `None`, if no hardware config is found.
 
     Raises `IOError` if some required file / directory is not found.
     """
@@ -60,7 +58,14 @@ def load_hardware_config(hardware_config=None, required=False):
         if isfile(h):
             return h
 
+        if hardware_config_dir is None:
+            raise IOError(f'{err_prefix} is not a fullpath to a file, and the '
+                f'environment variable {HARDWARE_DIR_ENVVAR} is not defined, so cannot '
+                'use a prefix'
+            )
+
         _hardware_config_path = None
+        hardware_config_prefixes = []
         for f in glob.glob(join(hardware_config_dir, '*')):
             n = split(f)[1]
             if n == h:
@@ -69,29 +74,25 @@ def load_hardware_config(hardware_config=None, required=False):
 
             # Using prefix is only allowed if `hardware_config_dir` is specified
             # (via the environment variable named in `HARDWARE_DIR_ENVVAR`).
-            if hardware_config_dir is not None:
-                # ext includes the '.'
-                prefix, ext = splitext(n)
-                if prefix == h and len(ext) > 1:
-                    _hardware_config_path = f
-                    break
+            #
+            # ext includes the '.'
+            prefix, ext = splitext(n)
 
-        # TODO test required logic doesn't break my old usage in check_need_...
-        if required and _hardware_config_path is None:
-            if hardware_config_dir is None:
-                raise IOError(err_prefix + ' is neither a fullpath to a file, '
-                    f'and the environment variable {HARDWARE_DIR_ENVVAR} is not'
-                    ' defined, so cannot use a prefix'
-                )
-            else:
-                raise IOError(err_prefix + ' is neither a fullpath to a file, '
-                    'nor a file / file prefix directly under '
-                    f'{HARDWARE_DIR_ENVVAR}={hardware_config_dir}'
-                )
+            # Currently not checking if ext is in {'.yaml', '.yml', '.json'} / similar.
+            hardware_config_prefixes.append(prefix)
+            if prefix == h:
+                _hardware_config_path = f
+                break
+
+        if _hardware_config_path is None:
+            raise IOError(f'{err_prefix} is neither a fullpath to a file, nor a file/'
+                f'prefix directly under {HARDWARE_DIR_ENVVAR}={hardware_config_dir}\n'
+                'prefixes of files under this directory:\n'
+                f'{pformat(hardware_config_prefixes)}'
+            )
 
         return _hardware_config_path
 
-    hardware_config_path = None
     if hardware_config is not None:
         hardware_config_path = find_hardware_config(hardware_config,
             f'hardware_config={hardware_config} was passed, but it'
@@ -105,17 +106,11 @@ def load_hardware_config(hardware_config=None, required=False):
             # TODO maybe raise separte IOError error here if HARDWARE_DIR_ENVVAR
             # is not defined
 
-    if hardware_config_path is not None:
-        print('Using olfactometer hardware definition at:',
-            hardware_config_path
-        )
-        with open(hardware_config_path, 'r') as f:
-            hardware_yaml_dict = yaml.safe_load(f)
-    else:
-        hardware_yaml_dict = None
+    print('Using olfactometer hardware definition at:', hardware_config_path)
+    with open(hardware_config_path, 'r') as f:
+        hardware_yaml_dict = yaml.safe_load(f)
 
     validate_hardware_dict(hardware_yaml_dict)
-
     return hardware_yaml_dict
 
 

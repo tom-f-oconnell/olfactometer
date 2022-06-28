@@ -12,6 +12,7 @@ from os.path import split, join, exists, isdir, splitext, isfile
 from pprint import pprint
 import time
 import warnings
+from typing import Dict, Any
 
 import serial
 import pyperclip
@@ -49,6 +50,12 @@ from olfactometer import IN_DOCKER, _DEBUG
 # TODO TODO also have python parse the "trial: <n>, pins(s): ..." messages from
 # arduino (when sent?) and check that timing is at least roughly right, in the
 # pulse timing case
+
+
+# TODO use elsewhere / check I'm only ever using str as (top-level) keys
+# Replace with TypeAlias if I ever switch to python >= 3.10
+ConfigDict = Dict[str, Any]
+
 
 # Using an 8 bit, unsigned type to represent this on the Arduino side.
 MAX_MSG_NUM = 255
@@ -206,6 +213,7 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 
 
 # TODO rename to preprocess_config_if_need or something
+# TODO create accurate type hint for `config` (it can be more than just ConfigDict...)
 def check_need_to_preprocess_config(config, hardware_config=None, verbose=False):
     # TODO update doc to indicate directory case if i'm going to support that
     """Returns input or new pre-processed config, if it input requests it.
@@ -297,30 +305,32 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
         pprint(generator_yaml_dict)
         print()
 
+    # Now assuming that if we are using a generator, we also must be using a separate
+    # hardware configuration.
+
     hardware_yaml_dict = config_io.load_hardware_config(hardware_config)
 
-    if hardware_yaml_dict is not None:
-        # TODO why is this not just in the generator.common fn that is supposed to
-        # validate hardware config dicts?
-        #
-        # assumes all hardware specific keys can be detected at the top level
-        # (so far the case, i believe, at least for expected inputs to
-        # preprocessors)
-        if any([k in common.hardware_specific_keys for k in generator_yaml_dict
-            ]):
-            # so that there is no ambiguity as to which should take precedence
-            # TODO maybe actually embed path to offending config in this case
-            raise ValueError('some of hardware_specific_keys='
-                f'{common.hardware_specific_keys} are defined in config. '
-                'this is invalid when hardware_config is specified.'
-            )
+    # TODO why is this not just in the generator.common fn that is supposed to
+    # validate hardware config dicts?
+    #
+    # assumes all hardware specific keys can be detected at the top level
+    # (so far the case, i believe, at least for expected inputs to
+    # preprocessors)
+    if any([k in common.hardware_specific_keys for k in generator_yaml_dict
+        ]):
+        # so that there is no ambiguity as to which should take precedence
+        # TODO maybe actually embed path to offending config in this case
+        raise ValueError('some of hardware_specific_keys='
+            f'{common.hardware_specific_keys} are defined in config. '
+            'this is invalid when hardware_config is specified.'
+        )
 
-        if verbose:
-            print('hardware_yaml_dict:')
-            pprint(hardware_yaml_dict)
-            print()
+    if verbose:
+        print('hardware_yaml_dict:')
+        pprint(hardware_yaml_dict)
+        print()
 
-        generator_yaml_dict.update(hardware_yaml_dict)
+    generator_yaml_dict.update(hardware_yaml_dict)
 
     generator = generator_yaml_dict['generator']
 
@@ -341,6 +351,13 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
 
     else:
         raise NotImplementedError(f"generator '{generator}' not supported")
+
+    # TODO TODO TODO add something like 'generated_from: <input YAML name>' to outputs
+    # YAML, so analysis can group stuff that was randomized from the same input data
+    # (assuming the file hadn't changed at least...)
+    # TODO maybe also w/ commit hash of any containing repo, if it tracks the file?
+    # probably not worth the extra complication, esp. if including handling for
+    # non-committed stuff...
 
     # TODO maybe just pprint the dict? or don't print this line at all in that
     # case?
@@ -442,9 +459,7 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
     if type(generated_config) is dict:
         yaml_dict = generated_config
 
-        generated_yaml_fname = \
-            datetime.now().strftime('%Y%m%d_%H%M%S_stimuli.yaml')
-
+        generated_yaml_fname = datetime.now().strftime('%Y%m%d_%H%M%S_stimuli.yaml')
         print(f'Writing generated YAML to {generated_yaml_fname}')
         assert not exists(generated_yaml_fname)
         with open(generated_yaml_fname, 'w') as f:
@@ -471,9 +486,8 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
             )
             assert not exists(generated_yaml_fname)
             with open(generated_yaml_fname, 'w') as f:
-                yaml.dump(yaml_dict, f,
-                    default_flow_style=default_flow_style
-                )
+                yaml.dump(yaml_dict, f, default_flow_style=default_flow_style)
+
         del generated_yaml_fname
         print()
 

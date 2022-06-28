@@ -2,7 +2,11 @@
 Utility functions shared by one or more config generators.
 """
 
+from typing import Dict, Optional, Tuple, List
+
 from olfactometer import validation
+from olfactometer.olf import ConfigDict
+
 
 # TODO maybe have `olfactometer` validate that all generator outputs have a
 # `pins2odors` / `odors2pins` variable with the pins all used (and not
@@ -25,7 +29,6 @@ def validate_pinlist_list(pinlist_at_each_trial):
 
 
 # TODO odor[list] validate fn??
-
 
 settings_key = 'settings'
 # TODO maybe modify this fn to modify a passed config_dict to add the relevant
@@ -219,7 +222,9 @@ def add_pinlist(pinlist_at_each_trial, generated_config_dict) -> None:
 # an optional `name` key to give something to print when telling the user what
 # to connect to what (include in functions shared by all generators though,
 # probably)
-def get_available_pins(data, generated_config_dict=None):
+def get_available_pins(data: ConfigDict,
+    generated_config_dict: Optional[ConfigDict] = None
+    ) -> Tuple[List[int], Dict[int, int], bool]:
     """
     Returns a list of available pins, a dict mapping them to their
     corresponding balances (if any), and a bool indicating whether there is just
