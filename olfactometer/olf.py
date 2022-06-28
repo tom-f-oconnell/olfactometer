@@ -398,7 +398,7 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
             raise
         else:
             # TODO test formatting is what i want
-            warnings.warn(err)
+            warnings.warn(str(err))
 
     save_generator_output = generator_yaml_dict.get(
         'save_generator_output', True

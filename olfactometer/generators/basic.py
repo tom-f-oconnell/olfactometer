@@ -91,14 +91,9 @@ def make_config_dict(generator_config_yaml_dict):
     available_valve_pins, pins2balances, single_manifold = \
         common.get_available_pins(data, generated_config_dict)
 
-    odors = data['odors']
-    # TODO factor out this validation
-    # Each element of odors, which is a dict, must at least have a `name`
-    # describing what that odor is (e.g. the chemical name).
-    assert all([('name' in o) for o in odors])
-    assert type(odors) is list
+    unique_odors, odors_in_order = common.get_odors(data)
 
-    n_odors = len(odors)
+    n_odors = len(unique_odors)
     assert len(available_valve_pins) >= n_odors
     # The means of generating the random odor vial <-> pin (valve) mapping.
     odor_pins = random.sample(available_valve_pins, n_odors)
@@ -108,7 +103,7 @@ def make_config_dict(generator_config_yaml_dict):
     # TODO maybe still re-order (by making a new dict and adding in the order i
     # want), because sort_keys=True default also re-orders some other things i
     # don't want it to
-    pins2odors = {p: o for p, o in zip(odor_pins, odors)}
+    pins2odors = {p: o for p, o in zip(odor_pins, unique_odors)}
 
     randomize_presentation_order_key = 'randomize_presentation_order'
     if randomize_presentation_order_key in data:
@@ -137,15 +132,26 @@ def make_config_dict(generator_config_yaml_dict):
     else:
         n_repeats = 1
 
-    trial_pins = odor_pins
+    # TODO refactor? also, if i make an Odor class w/ a meaningful hash, could simplify
+    # this (as well as similar code in common.get_odors)
+    trial_pins_norepeats = []
+    for o in odors_in_order:
+        found_pin = False
+        for p, pin_odor in pins2odors.items():
+            if common.odors_equal(o, pin_odor):
+                trial_pins_norepeats.append(p)
+                found_pin = True
+                break
+        assert found_pin
+
     if randomize_presentation_order:
         # This re-orders odor_pins in-place (it modifies it, rather than
         # returning something modified).
-        random.shuffle(trial_pins)
+        random.shuffle(trial_pins_norepeats)
 
     # TODO worth factoring this into a fn in common for expanding to # of
     # trials? could accept arbitrary lists?
-    trial_pinlists = [[p] for p in trial_pins for _ in range(n_repeats)]
+    trial_pinlists = [[p] for p in trial_pins_norepeats for _ in range(n_repeats)]
 
     pinlist_at_each_trial = common.add_balance_pins(
         trial_pinlists, pins2balances

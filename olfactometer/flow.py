@@ -499,7 +499,7 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
 
         if mfc_id is None:
             raise FlowHardwareNotConfiguredError('flow controller ID not found at '
-                f'either {key_prefix}[address|port] in hardware config, but flows '
+                f'either {key_prefix}[address|port] in hardware config, but flow '
                 'setpoints were configured!'
             )
 

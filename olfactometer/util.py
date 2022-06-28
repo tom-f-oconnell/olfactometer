@@ -106,7 +106,7 @@ def format_odor(odor_dict, show_abbrevs=True):
         if log10_conc is None:
             return f'solvent for {odor_str}'
 
-        # TODO limit precision if float
+        # TODO limit precision if float (but only display as int if not a float)
         odor_str += ' @ {}'.format(log10_conc)
 
     return odor_str

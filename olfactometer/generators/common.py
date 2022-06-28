@@ -345,3 +345,81 @@ def validate_hardware_dict(hardware_dict, allow_unknown_keys=True):
                 f'hardware config had unknown keys: {unknown_keys}'
             )
 
+
+# TODO move to validation.py?
+def validate_odors(odors: List[dict]) -> None:
+    # Each element of odors, which should each be a dict, must at least have a `name`
+    # describing what that odor is (e.g. the chemical name).
+    #
+    # 'log10_conc' / 'abbrev' are optional but used in some places (printing).
+    #
+    # Other data is totally optional.
+    assert all([('name' in o) for o in odors])
+    assert type(odors) is list
+
+
+# Could probably replace this whole fn w/ subsetting dict and using ==, except maybe
+# some weirdness surrounding floating points. At least this way, we have the option
+# to easily change the float equality checking to use np.isclose
+def odors_equal(o1: dict, o2: dict) -> bool:
+    """Returns whether two odor dicts should be considered equal.
+
+    Currently only checks 'name' and 'log10_conc' keys.
+    """
+    if o1['name'] != o2['name']:
+        return False
+
+    conc_key = 'log10_conc'
+    o1_has_conc = conc_key in o1
+    o2_has_conc = conc_key in o2
+
+    if not (o1_has_conc or o2_has_conc):
+        return True
+
+    if not (o1_has_conc and o2_has_conc):
+        return False
+
+    # If we ever actually did use the same odor w/ multiple solvents, would want to
+    # add the 'solvent' key to consideration.
+
+    o1_conc = o1[conc_key]
+    o2_conc = o2[conc_key]
+    return o1_conc == o2_conc
+
+
+def get_odors(config_dict: ConfigDict) -> Tuple[List[dict], List[dict]]:
+    """Returns unique list of odor dicts, for mapping to pins, and full list in order.
+
+    Odors are considered equal as long as they match on 'name' / 'log10_conc' keys, and
+    the returned list will currently only include the first of each odor within each
+    equality class.
+
+    Note that anything using this function will need to modify the names of odors *if
+    there are to be multiple of the same type of odor connected in parallel*, e.g.
+    `- name: pfo` -> `- name: pfo [a|b]`.
+    """
+    odors = config_dict['odors']
+    validate_odors(odors)
+
+    # TODO maybe add aggregation of keys/values beyond those used to check odor
+    # equality, and provide means of err-ing / notifying in those cases
+
+    # Could probably mostly replace (+simplify/speedup) w/ using a custom Odor class w/
+    # a custom hash method. I wonder if pydantic makes it easy to define hash using only
+    # some fields?
+    equiv_odors = []
+    #claimed_odor_indices = set()
+    #for i, o in enumerate(odors):
+    for o in odors:
+
+        already_in_equiv = False
+        for eo in equiv_odors:
+            if odors_equal(o, eo):
+                already_in_equiv = True
+                break
+
+        if not already_in_equiv:
+            equiv_odors.append(o)
+
+    return equiv_odors, odors
+
