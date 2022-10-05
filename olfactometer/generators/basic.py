@@ -42,6 +42,7 @@ post_pulse_s: 11
 
 import random
 import warnings
+from copy import deepcopy
 
 from olfactometer.generators import common
 
@@ -94,7 +95,31 @@ def make_config_dict(generator_config_yaml_dict):
     unique_odors, odors_in_order = common.get_odors(data)
 
     n_odors = len(unique_odors)
-    assert len(available_valve_pins) >= n_odors
+    if n_odors > len(available_valve_pins):
+        #n_odors = len(available_valve_pins)
+
+        assert len(unique_odors) == len(odors_in_order), ('not supported when n_odors '
+            '> len(available_valve_pins)'
+        )
+        random_odors = list(unique_odors)
+        random.shuffle(random_odors)
+
+        i = 0
+        generated_config_dicts = []
+        while True:
+            random_odor_subset = random_odors[i:(i+len(available_valve_pins))]
+
+            subset_input_config_dict = deepcopy(generator_config_yaml_dict)
+            subset_input_config_dict['odors'] = random_odor_subset
+
+            generated_config_dict = make_config_dict(subset_input_config_dict)
+            generated_config_dicts.append(generated_config_dict)
+
+            if len(random_odor_subset) < len(available_valve_pins):
+                return generated_config_dicts
+
+            i += len(available_valve_pins)
+
     # The means of generating the random odor vial <-> pin (valve) mapping.
     odor_pins = random.sample(available_valve_pins, n_odors)
 
