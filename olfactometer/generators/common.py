@@ -408,10 +408,7 @@ def get_odors(config_dict: ConfigDict) -> Tuple[List[dict], List[dict]]:
     # a custom hash method. I wonder if pydantic makes it easy to define hash using only
     # some fields?
     equiv_odors = []
-    #claimed_odor_indices = set()
-    #for i, o in enumerate(odors):
     for o in odors:
-
         already_in_equiv = False
         for eo in equiv_odors:
             if odors_equal(o, eo):

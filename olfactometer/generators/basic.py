@@ -89,33 +89,45 @@ def make_config_dict(generator_config_yaml_dict):
 
     generated_config_dict = common.parse_common_settings(data)
 
-    available_valve_pins, pins2balances, single_manifold = \
-        common.get_available_pins(data, generated_config_dict)
+    available_valve_pins, pins2balances, single_manifold = common.get_available_pins(
+        data, generated_config_dict
+    )
 
     unique_odors, odors_in_order = common.get_odors(data)
 
     n_odors = len(unique_odors)
     if n_odors > len(available_valve_pins):
-        #n_odors = len(available_valve_pins)
-
-        assert len(unique_odors) == len(odors_in_order), ('not supported when n_odors '
-            '> len(available_valve_pins)'
+        # TODO should it be an error if this is False, but randomize_presentation_order
+        # is True?
+        #
+        # If False, will split odors based on original order in list.
+        randomly_split_odors_into_runs = data.get('randomly_split_odors_into_runs',
+            True
         )
-        random_odors = list(unique_odors)
-        random.shuffle(random_odors)
+        assert randomly_split_odors_into_runs in (True, False)
+
+        # TODO why did i impose this? i guess we might either get the same odor twice in
+        # a recording? or if we are specifying it twice, it's probably because the
+        # specific order or important? change error message to reflect that?
+        assert n_odors == len(odors_in_order), ('multiple blocks of one odor not '
+            'supported when n_odors > len(available_valve_pins)'
+        )
+        unique_odors = list(unique_odors)
+        if randomly_split_odors_into_runs:
+            random.shuffle(unique_odors)
 
         i = 0
         generated_config_dicts = []
         while True:
-            random_odor_subset = random_odors[i:(i+len(available_valve_pins))]
+            odor_subset = unique_odors[i:(i+len(available_valve_pins))]
 
             subset_input_config_dict = deepcopy(generator_config_yaml_dict)
-            subset_input_config_dict['odors'] = random_odor_subset
+            subset_input_config_dict['odors'] = odor_subset
 
             generated_config_dict = make_config_dict(subset_input_config_dict)
             generated_config_dicts.append(generated_config_dict)
 
-            if len(random_odor_subset) < len(available_valve_pins):
+            if len(odor_subset) < len(available_valve_pins):
                 return generated_config_dicts
 
             i += len(available_valve_pins)
@@ -131,6 +143,7 @@ def make_config_dict(generator_config_yaml_dict):
     pins2odors = {p: o for p, o in zip(odor_pins, unique_odors)}
 
     randomize_presentation_order_key = 'randomize_presentation_order'
+    # TODO refactor to some bool parse fn in common/above?
     if randomize_presentation_order_key in data:
         randomize_presentation_order = data[randomize_presentation_order_key]
         assert randomize_presentation_order in (True, False)
