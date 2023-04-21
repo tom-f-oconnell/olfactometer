@@ -66,7 +66,7 @@ def generate_nanopb_code(sketch_dir):
 
 
 def make_arduino_sketch_and_libraries(sketch_dir, arduino_lib_dir,
-    use_symlinks=True):
+    use_symlinks: bool = True):
 
     sketch_dir = abspath(sketch_dir)
     arduino_lib_dir = abspath(arduino_lib_dir)
@@ -425,6 +425,12 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port=None,
     )
     if show_properties:
         cmd += ' --show-properties'
+
+    quiet = False
+    if quiet:
+        # This doesn't remove the new (colored) prints showing libraries/platform used
+        # (which I've seen after switching to arduino-cli 0.32)
+        cmd += ' --quiet'
 
     extra_flag_list = []
 

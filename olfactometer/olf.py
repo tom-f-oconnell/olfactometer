@@ -611,11 +611,7 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         # TODO maybe move this function in here...
         py_version_str = upload.version_str()
         # update check not working yet
-        '''
-        py_version_str = upload.version_str(update_check=True,
-            update_on_prompt=True
-        )
-        '''
+        #py_version_str = upload.version_str(update_check=True, update_on_prompt=True)
 
         if do_upload:
             # TODO save file modification time at upload and check if it has
@@ -634,8 +630,7 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         # any of the hashes in our history (git log), and warn / prompt about
         # update if github version is newer
 
-        if (not allow_version_mismatch and
-            py_version_str == upload.no_clean_hash_str):
+        if (not allow_version_mismatch and py_version_str == upload.no_clean_hash_str):
 
             # TODO try to move this error to before upload would happen
             # (if upload is requested)
@@ -644,6 +639,8 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
                 'please commit and re-upload.'
             )
 
+        # TODO validate before upload.main call? should upload be doing it's own
+        # similar validation?
         validation.validate_port(port)
 
         # This is set into a global variable, so that on subsequent config files
@@ -727,7 +724,9 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
     # boilerplate, including explicit calls to pyserial, when using this in
     # other python code)
     with serial.Serial(port, baud_rate, timeout=0.1) as ser:
-        print('Connected')
+        if verbose:
+            print('Connected')
+
         connect_time_s = time.time()
 
         while True:
@@ -771,7 +770,9 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         if settings.follow_hardware_timing:
             print('Ready (waiting for hardware triggers)')
         else:
-            print('Starting')
+            if verbose:
+                print('Starting')
+
             seen_trial_indices = set()
             last_trial_idx = None
 

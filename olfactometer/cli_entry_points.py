@@ -358,6 +358,7 @@ def upload_cli():
 
     util.argparse_arduino_id_args(parser)
 
+    # TODO only include all of these options if OLFACTOMETER_DEBUG=1?
     parser.add_argument('-d', '--dry-run', action='store_true',
         help='do not actually upload. just compile.'
     )
@@ -374,15 +375,22 @@ def upload_cli():
         'Arduino will print more stuff over USB and its code size will increase'
         ' slightly.'
     )
+
+    # TODO describe which files we talking about in doc. the nanopb library, right? or
+    # whole sketch tree includuing library to compile?
+    # TODO or just don't include this on windows?
     parser.add_argument('-n', '--no-symlink', action='store_true',
         help='copy files instead of symlinking them, when preparing Arduino sketch and'
         'libraries for compilation. ignored on Windows, where files are always copied'
         ' rather than symlinked.'
     )
+
     parser.add_argument('-v', '--verbose', action='store_true',
         help='make arduino-cli compilation verbose'
     )
+
     kwargs = util.parse_args(parser)
+    kwargs['use_symlinks'] = not kwargs.pop('no_symlink', False)
 
     upload_main(**kwargs)
 

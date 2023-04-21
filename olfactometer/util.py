@@ -6,9 +6,9 @@ import subprocess
 import warnings
 from datetime import timedelta
 import math
-import argparse
+from argparse import ArgumentParser
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import appdirs
 # TODO use to make functions for printing vid/pid (or other unique ids for usb
@@ -309,9 +309,11 @@ def write_last_attempted_config_file(config_fname) -> None:
     last_attempted_cache_fname.write_text(cache_contents)
 
 
-def argparse_config_args(parser=None, *, config_path=True, hardware=True):
+def argparse_config_args(parser: Optional[ArgumentParser] = None, *,
+    config_path: bool = True, hardware: bool = True) -> ArgumentParser:
+
     if parser is None:
-        parser = argparse.ArgumentParser()
+        parser = ArgumentParser()
 
     if config_path:
         parser.add_argument('config_path', type=str, nargs='?', default=None,
@@ -324,7 +326,7 @@ def argparse_config_args(parser=None, *, config_path=True, hardware=True):
         # same keys already present in some YAML
         parser.add_argument('-r', '--hardware', action='store', default=None,
             dest='hardware_config',
-            help='[path to / prefix of] config specifying available valve pins and'
+            help='[path to / prefix of] config specifying available valve pins and '
             'other important pins for a particular physical olfactometer. config '
             f'must be under {HARDWARE_DIR_ENVVAR} to refer by prefix. see also '
             f'{DEFAULT_HARDWARE_ENVVAR}.'
@@ -337,8 +339,8 @@ def argparse_config_args(parser=None, *, config_path=True, hardware=True):
 # one reason not to would be if i wanted to "from cli_entry_points import *"
 # in __init__.py (need a line for each entrypoint for setup.py entry points to
 # work)
-def argparse_arduino_id_args(parser=None):
-    """Returns argparse.ArgumentParser with --port and --fqbn args.
+def argparse_arduino_id_args(parser: Optional[ArgumentParser] = None) -> ArgumentParser:
+    """Returns CLI parser with --port and --fqbn args.
 
     `main_cli`, `valve_test_cli`, and `upload_cli` currently use these arguments
     to specify which arduino should be communicated with. --fqbn should only be
@@ -348,7 +350,7 @@ def argparse_arduino_id_args(parser=None):
     a new parser is made first.
     """
     if parser is None:
-        parser = argparse.ArgumentParser()
+        parser = ArgumentParser()
 
     # TODO just detect? or still have this as an option? maybe have on default,
     # and detect by default? (might not be very easy to detect with docker,
@@ -367,14 +369,15 @@ def argparse_arduino_id_args(parser=None):
     return parser
 
 
-def argparse_run_args(parser=None, *, wait_option=True, **kwargs):
-    """Returns argparse.ArgumentParser with args shared by [main/valve_test]_cli
+def argparse_run_args(parser: Optional[ArgumentParser] = None, *,
+    wait_option: bool = True, **kwargs) -> ArgumentParser:
+    """Returns CLI parser with args shared by [main/valve_test]_cli
 
     If parser is passed in, arguments will be added to that parser. Otherwise,
     a new parser is made first.
     """
     if parser is None:
-        parser = argparse.ArgumentParser()
+        parser = ArgumentParser()
 
     argparse_config_args(parser, **kwargs)
 
@@ -406,7 +409,8 @@ def argparse_run_args(parser=None, *, wait_option=True, **kwargs):
     return parser
 
 
-def add_argparse_repeat_arg(parser, default_n_repeats=3, argparse_defaults=True):
+def add_argparse_repeat_arg(parser: ArgumentParser, default_n_repeats: int = 3,
+    argparse_defaults: bool = True) -> ArgumentParser:
     """
     If argparse_defaults is False, do not use argparse defaults, so that None can be
     processed conditionally. Shows default_n_repeats in help messages regardless.
@@ -418,8 +422,8 @@ def add_argparse_repeat_arg(parser, default_n_repeats=3, argparse_defaults=True)
     return parser
 
 
-def add_argparse_timing_args(parser, default_on_s, default_off_s,
-    argparse_defaults=True):
+def add_argparse_timing_args(parser: ArgumentParser, default_on_s: float,
+    default_off_s: float, argparse_defaults: bool = True) -> ArgumentParser:
     """
     If argparse_defaults is False, do not use argparse defaults, so that None can be
     processed conditionally. Shows default_[on|off]_s in help messages regardless.

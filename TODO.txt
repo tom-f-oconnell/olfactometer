@@ -1,5 +1,9 @@
-- actually detect port when possible using arduino-cli
-  (rather than just hoping default of /dev/ttyACM0 works...)
+- CLI entrypoints for printing conf (currently just all OLFACTOMETER_* env vars,
+  *_DEBUG, *_DEFAULT_HARDWARE, and *_HARDWARE_DIR)
+  - maybe also means of (+CLI for) setting beyond env vars?
+
+  - add config option (could just start w/ env var) for directory to always write
+    outputs to
 
 - add script (/ option to olf-upload [/ "olf -u ..."] command) to store the
   hardware definition in the non-volatile memory of the arduino
@@ -20,7 +24,7 @@
   - arduino script that detects which pins are high (connect pins 1:1) and
     reports
   - script that interprets DAQ signals to measure timing and check
-  
+
 - add something to do all install steps on clone?
   + do i need to also clone that submodule? probably, right?
 
