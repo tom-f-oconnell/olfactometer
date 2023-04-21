@@ -192,11 +192,12 @@ def get_port_and_fqbn(port=None, fqbn=None, will_upload=True):
         # TODO do i want to restrict to 'protocol': 'serial'? not sure what else
         # there is...
         try:
-            xs = b['boards']
+            xs = b['matching_boards']
+            # This changed to above somewhere between versions 0.18.3 and 0.32.2
+            #xs = b['boards']
         except KeyError:
-            # 'boards' only defined for stuff that is actually real (that has a
-            # FQBN?) it seems. e.g. /dev/ttyS0 on my 18.04 machine doesn't have
-            # this.t
+            # 'matching_boards' only defined for stuff that is actually real (that has a
+            # FQBN?) it seems. e.g. /dev/ttyS0 on my 20.04 machine doesn't have this.
             continue
 
         assert len(xs) == 1
@@ -215,7 +216,9 @@ def get_port_and_fqbn(port=None, fqbn=None, will_upload=True):
             # TODO maybe log here w/ reason for skipping
             continue
 
-        curr_port = b['address']
+        curr_port = b['port']['address']
+        # This changed to above somewhere between versions 0.18.3 and 0.32.2
+        #curr_port = b['address']
         if port is not None and curr_port != port:
             # TODO maybe log here w/ reason for skipping
             continue
@@ -377,7 +380,7 @@ def version_str(update_check=False, update_on_prompt=False):
         gh_var = 'OLFACTOMETER_VERSION_STR'
         assert gh_var in os.environ
         vstr = os.environ[gh_var]
-        # TODO maybe further check that it's either no_clean_hash_str or 
+        # TODO maybe further check that it's either no_clean_hash_str or
         # something that could be a git hash
         assert len(vstr) > 0, f'{gh_var} not set in Docker build!'
         return vstr
@@ -421,7 +424,6 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port=None,
         f'--build-path {build_path} --build-cache-path {build_cache_path}'
     )
     if show_properties:
-        # TODO --build-properties is deprecated. this still good?
         cmd += ' --show-properties'
 
     extra_flag_list = []
@@ -441,13 +443,11 @@ def upload(sketch_dir, arduino_lib_dir, fqbn=None, port=None,
         # https://github.com/arduino/arduino-cli/issues/210 warns that this can
         # / will override similar flags specified in boards.txt, though I'm not
         # sure that will be an issue we encounter.
-        # TODO try to update to (a series of?) --build-property calls, as
-        # deprecation warning for --build-properties says
-        cmd += f' --build-properties build.extra_flags="{extra_flags}"'
+        cmd += f' --build-property build.extra_flags="{extra_flags}"'
 
     if verbose:
         cmd += ' -v'
-        
+
     upload_args = f' -u -t -p {port}'
     if not (dry_run or show_properties):
         cmd += upload_args

@@ -138,7 +138,7 @@ for you for some reason. You must verify that things are working as you intend.
 #### Dependencies
 - `python3.6+`
 - `protoc>=3.0.0`
-- `arduino-cli`
+- `arduino-cli>=0.32.2`
 - A recent version of `pip` (`20.2.2` definitely works, `9.0.1` does not)
 
 #### Installation
