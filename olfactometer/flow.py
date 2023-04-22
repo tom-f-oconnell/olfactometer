@@ -538,12 +538,9 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
     # check I can find the flow controllers before generating the config, I'm not also
     # threading this through, so that decisions on whether to err can be made after the
     # config is generated.
+    require_flow_controllers = None
     if require_flow_controllers_key in input_config_dict:
         require_flow_controllers = input_config_dict[require_flow_controllers_key]
-
-        # TODO deepcopy instead?
-        generated_config = generated_config.copy()
-        generated_config[require_flow_controllers_key] = require_flow_controllers
 
     _, _, is_single_manifold = common.get_available_pins(hardware_dict)
 
@@ -615,6 +612,10 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
         ]
         # TODO deepcopy instead?
         config_dict = config_dict.copy()
+
+        if require_flow_controllers is not None:
+            config_dict[require_flow_controllers_key] = require_flow_controllers
+
         config_dict[flow_setpoints_sequence_key] = flow_setpoints_sequence
         return config_dict
 
