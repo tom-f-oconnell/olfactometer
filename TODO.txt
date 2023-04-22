@@ -1,3 +1,8 @@
+- olf-lastgen command to complement olf-lastrun, but instead printing/copying the path
+  to the last generated config (that might still be waiting on the "Press Enter..."
+  prompt) (or maybe it should specifically get the config of what is waiting on enter?
+  checking there's only one such thing?)
+
 - CLI entrypoints for printing conf (currently just all OLFACTOMETER_* env vars,
   *_DEBUG, *_DEFAULT_HARDWARE, and *_HARDWARE_DIR)
   - maybe also means of (+CLI for) setting beyond env vars?
@@ -29,41 +34,6 @@
   + do i need to also clone that submodule? probably, right?
 
 - arduino emulation for on-host integration tests?
-
-- add windows steps to install instructions. and are they the same as would
-  be needed on a fresh 18.04 anyway? (seems we start in dialout in WSL, so
-  steps aren't exactly the same...)
-  - git submodule update --init (in this repo top-level)
-  - sudo apt install python3-pip
-  - sudo apt install python3-venv
-  - sudo apt install protobuf-compiler
-  - (after making and activating virtualenv) pip install --upgrade pip
-    (or else some of stuff in requirements.txt doesn't build)
-
-- in 16.04, after installing python3.6 from deadsnakes repo, also needed to
-  install python3.6-venv to not have the ensurepip error (pip was already
-  installed)
-
-  - need to download protobuf source from here:
-    https://github.com/protocolbuffers/protobuf/archive/v3.0.0.tar.gz
-
-    ... and compile, to have same version as installed with apt on 18.04
-
-    See: https://askubuntu.com/questions/1072683
-
-    Needed to modify above askubuntu instructions by following jalajc's comment
-    here: https://github.com/samjabrahams/tensorflow-on-raspberry-pi/issues/42
-    (I just manually ran them inside protobuf source root)
-
-    Then I needed to do ./autogen.sh before ./configure existed.
-
-    TODO TODO TODO fix errors / warnings that caused: make check
-    to fail in protobuf 3.0.0 build!
-
-    TODO also run nanopb tests and see if those work!
-
-    The version that apt installs in 16.04 doesn't support version 3 of the
-    protocol (the version I use).
 
 - implement some stuff to assist manual testing
   - pulse valve at a configurable duty cycle / on off pulse widths until

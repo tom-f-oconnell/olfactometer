@@ -7,8 +7,7 @@ import binascii
 from datetime import datetime, timedelta
 import glob
 import importlib.util
-import os
-from os.path import split, join, exists, isdir, splitext, isfile
+from os.path import split, join, isdir, splitext, isfile
 from pprint import pprint
 import time
 import warnings
@@ -214,9 +213,10 @@ def write_message(ser, msg, verbose=False, use_message_nums=True,
 
 # TODO rename to preprocess_config_if_need or something
 # TODO create accurate type hint for `config` (it can be more than just ConfigDict...)
+# TODO doc possible return types
 def check_need_to_preprocess_config(config, hardware_config=None, verbose=False):
     # TODO update doc to indicate directory case if i'm going to support that
-    """Returns input or new pre-processed config, if it input requests it.
+    """Returns input or new pre-processed config, if input requests it.
 
     If a line like 'generator: <generator-py-file-prefix>' is in the YAML file
     `olfactometer/generators/<generator-py-file-prefix>.py:make_config_dict`
@@ -370,6 +370,8 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
     generated_config = generator_fn(generator_yaml_dict)
 
     # TODO refactor so addresses can also be used w/o generators
+    # (why is there currently that limitation?)
+    # TODO TODO refactor to flow (inside generate_flow_setpoint_sequence?)?
     if flow.safe_usb_ids_key in hardware_yaml_dict:
         safe_vid_pid_pairs = hardware_yaml_dict[flow.safe_usb_ids_key]
 
@@ -392,17 +394,15 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
         generated_config = flow.generate_flow_setpoint_sequence(generator_yaml_dict,
             hardware_yaml_dict, generated_config
         )
+    except flow.FlowHardwareNotConfigured as err:
+        flow.handle_flow_control_requirement(generator_yaml_dict, err,
+            'Flow controller configuration will not be in generated YAML!\n'
+        )
 
-    except flow.FlowHardwareNotConfiguredError as err:
-        if generator_yaml_dict.get('require_flow_controllers', False):
-            raise
-        else:
-            # TODO test formatting is what i want
-            warnings.warn(str(err))
-
-    save_generator_output = generator_yaml_dict.get(
-        'save_generator_output', True
-    )
+    # TODO delete? why would i want this? or do i use it [/ might i want to] for some
+    # CLI stuff that isn't actually for a real experiment? comment explaining that here
+    # if so
+    save_generator_output = generator_yaml_dict.get('save_generator_output', True)
     if not save_generator_output:
         if type(generated_config) is dict:
             # TODO maybe a less jargony message here?
@@ -411,89 +411,28 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
             )
             return generated_config
         else:
-            raise ValueError("save_generator_output must be True (the default) "
-                'in case where generator produces a sequence of configuration '
-                'files'
+            # TODO why?
+            raise ValueError('save_generator_output must be True (the default) in case '
+                'where generator produces a sequence of configuration files'
             )
 
-    # TODO probably want to save the config + version of the code in the
-    # case when a generator isn't used regardless (or at least have the
-    # option to do so...) (not sure i do want this...)
-    # TODO might want to use a zipfile to include the extra generator
-    # information in that case. or just always a zipfile then for
-    # consistency?
+    # TODO TODO allow configuration of path these are saved at? at CLI, in yaml, env
+    # var, or where? default to `generated_stimulus_configs` or something, if not just
+    # zipping with other stuff, then maybe call it something else?
 
-    # TODO TODO allow configuration of path these are saved at? at CLI, in
-    # yaml, env var, or where? default to `generated_stimulus_configs` or
-    # something, if not just zipping with other stuff, then maybe call it
-    # something else?
+    # TODO probably want to save the config + version of the code in the case when a
+    # generator isn't used regardless (or at least have the option to do so...)
+    # (not sure i do want this...)
+    # TODO might want to use a zipfile to include the extra generator information in
+    # that case. or just always a zipfile then for consistency?
 
-    # TODO probably want to save generator_yaml_dict (and generator too, if
-    # user defined...)? maybe as part of a zip file? or copy alongside w/
-    # diff suffix or something?
+    # TODO probably want to save generator_yaml_dict (and generator too, if user
+    # defined...)? maybe as part of a zip file? or copy alongside w/ diff suffix or
+    # something?
     # (though aren't keys from that in generated yaml anyway? or no?)
 
-    # TODO might want to refactor so this function can also just return the
-    # file contents it just wrote (to not need to re-read them), but then
-    # again, that's probably pretty trivial...
-
-    # TODO should i be using safe_dump instead? (modify SafeDumper instead
-    # of Dumper if so)
-    # So that there are not aliases (references) within the generated YAML
-    # (they make it less readable).
-    # https://stackoverflow.com/questions/13518819
-    yaml.Dumper.ignore_aliases = lambda *args : True
-
-    # TODO what is default_style kwarg to pyyaml dump? docs don't seem to
-    # say...
-    # TODO maybe i want to make a custom dumper that just uses this style
-    # for pin groups though? right now it's pretty ugly when everything is
-    # using this style...
-    # Setting this to True would make lists single-line by default, which I
-    # want for terminal stuff, but I don't like what this flow style does
-    # elsewhere.
-    default_flow_style = False
-
-    # TODO maybe refactor two branches of this conditional to share a bit
-    # more code?
-    if type(generated_config) is dict:
-        yaml_dict = generated_config
-
-        generated_yaml_fname = datetime.now().strftime('%Y%m%d_%H%M%S_stimuli.yaml')
-        print(f'Writing generated YAML to {generated_yaml_fname}')
-        assert not exists(generated_yaml_fname)
-        with open(generated_yaml_fname, 'w') as f:
-            yaml.dump(yaml_dict, f, default_flow_style=default_flow_style)
-        print()
-
-        return generated_yaml_fname
-
-    # TODO what type(s) is/are generated_config here? a list of dicts, right?
-    else:
-        # TODO TODO TODO squeeze list to single element if only one file would be in dir
-
-        timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-        generated_config_dir = timestamp_str + '_stimuli'
-        # TODO maybe also print each filename that is saved?
-        print(f'Writing generated YAML under ./{generated_config_dir}/')
-        assert not exists(generated_config_dir)
-        os.mkdir(generated_config_dir)
-
-        for i, yaml_dict in enumerate(generated_config):
-            assert type(yaml_dict) is dict
-            generated_yaml_fname = join(
-                generated_config_dir, f'{timestamp_str}_stimuli_{i}.yaml'
-            )
-            assert not exists(generated_yaml_fname)
-            with open(generated_yaml_fname, 'w') as f:
-                yaml.dump(yaml_dict, f, default_flow_style=default_flow_style)
-
-        del generated_yaml_fname
-        print()
-
-        # TODO test this case (as well as previous branch of this
-        # conditional)
-        return generated_config_dir
+    written_yaml_fname_or_dir = config_io.write_timestamped_config(generated_config)
+    return written_yaml_fname_or_dir
 
 
 # TODO TODO maybe add a block=True flag to allow (w/ =False) to return, to not
@@ -676,17 +615,23 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
     # Want this to happen after Enter press for the same reason as below.
     flow_setpoints_sequence = None
     if flow.flow_setpoints_sequence_key in config_dict:
+        try:
+            mfc_id2flow_controller, are_flows_constant = flow.open_alicat_controllers(
+                config_dict, verbose=verbose
+            )
+            flow_setpoints_sequence = config_dict[flow.flow_setpoints_sequence_key]
 
-        mfc_id2flow_controller, are_flows_constant = flow.open_alicat_controllers(
-            config_dict, verbose=verbose
-        )
-        flow_setpoints_sequence = config_dict[flow.flow_setpoints_sequence_key]
+        except flow.FlowHardwareNotFound as err:
+            flow.handle_flow_control_requirement(config_dict, err,
+                'Not using flow controllers!\n'
+            )
 
+    if flow_setpoints_sequence is not None:
         if not verbose:
             print('Initial ', end='')
 
-        flow.set_flow_setpoints(mfc_id2flow_controller,
-            flow_setpoints_sequence[0], verbose=verbose
+        flow.set_flow_setpoints(mfc_id2flow_controller, flow_setpoints_sequence[0],
+            verbose=verbose
         )
 
         # TODO TODO replace w/ checking flows and continuing once they get within some
@@ -707,8 +652,7 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
 
     if not settings.follow_hardware_timing:
         # TODO factor this + above calculation of duration into separate CLI util
-        expected_finish = \
-            datetime.now() + timedelta(seconds=expected_duration_s)
+        expected_finish = datetime.now() + timedelta(seconds=expected_duration_s)
 
         finish_str = expected_finish.strftime('%I:%M%p').lstrip('0')
         print(f'Will finish at: {finish_str}')

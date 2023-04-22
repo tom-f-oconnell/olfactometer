@@ -6,6 +6,7 @@ import atexit
 import math
 from pprint import pprint
 import time
+import warnings
 
 from alicat import FlowController
 from serial.tools import list_ports
@@ -18,8 +19,19 @@ from olfactometer.generators import common
 # TODO use alicat mock.py contents to allow testing (if _DEBUG) flow stuff w/o flow
 # controllers connected
 
+# Hardware config doesn't specify ports/addresses for flow controllers.
+class FlowHardwareNotConfigured(Exception):
+    pass
+
+# Configured but not found at specified port/address.
+#
+# TODO rename to something like PortNotFoundForAddress?
+# (or actually use the error in cases where they can't be opened based on ports too)
+class FlowHardwareNotFound(IOError):
+    pass
+
+require_flow_controllers_key = 'require_flow_controllers'
 flow_setpoints_sequence_key = 'flow_setpoints_sequence'
-using_addresses = None
 
 safe_usb_ids_key = 'safe_usb_ids_to_check_for_mfcs'
 # TODO specify whether they should be integer or str (former i think?)
@@ -32,6 +44,7 @@ safe_usb_ids_key = 'safe_usb_ids_to_check_for_mfcs'
 # TODO update hardware config validation to also check these are in the right format
 # (and that they are in the range for USB ids too, ideally)
 # NOTE: currently this is set in olf (but only if generators used...)
+# TODO TODO why did i have this as a global? refactor.
 safe_usb_ids_to_check_for_mfcs = None
 
 # This cost is incurrent 6 times in checking whether a FlowMeter is connected
@@ -45,7 +58,9 @@ read_timeout_s = 0.1
 _address2port = dict()
 _whitelist_ports = set()
 def find_port_for_controller_address(address, unsafe=False, _last_port=None):
-
+    """
+    Raises FlowHardwareNotFound if no flow controller can be found with this address.
+    """
     if safe_usb_ids_to_check_for_mfcs is None and not unsafe:
         raise ValueError('flow.safe_usb_ids_to_check_for_mfcs must be set in order to '
             'reference flow controllers by address (rather than by port). adding a list'
@@ -102,48 +117,70 @@ def find_port_for_controller_address(address, unsafe=False, _last_port=None):
         _address2port[address] = port.device
         return port.device
 
-    raise IOError(f'no (whitelisted) port found for MFC address {address}')
+    raise FlowHardwareNotFound(f'no (whitelisted) port found for MFC address {address}')
 
 
 _mfc_id2initial_get_output = dict()
-def open_alicat_controller(mfc_id=None, *, port=None, address=None,
+def open_alicat_controller(mfc_id=None, *, port=None, address=None, id_type=None,
     save_initial_setpoints=True, check_gas_is_air=True, _skip_read_check=False,
-    _last_port=None, verbose=False):
+    _last_port=None, verbose=False) -> FlowController:
     """Returns opened alicat.FlowController for controller on input port/address.
 
     Also registers atexit function to close connection and restore previous setpoints.
 
     Unless save_initial_setpoints and check_gas_is_air are both False, queries the
     controller to set corresponding entry in `_mfc_id2initial_get_output`.
+
+    Raises:
+        FlowHardwareNotFound (see `find_port_for_controller_address`)
     """
     if save_initial_setpoints or check_gas_is_air:
         _skip_read_check = False
 
     if sum([x is not None for x in [mfc_id, port, address]]) != 1:
         raise ValueError('specify exactly one of mfc_id, port, or address. mfc_id '
-            'will select between port/address behavior based on flow.using_addresses'
+            'will select between port/address behavior based on id_type'
         )
 
     if mfc_id is not None:
-        if using_addresses is None:
-            raise RuntimeError('flow.using_addresses must be set True/False')
-
-        _using_addresses = using_addresses
-        if _using_addresses:
+        if id_type == 'address':
             address = mfc_id
-        else:
-            port = mfc_id
 
-    elif port is None:
-        _using_addresses = True
-    else:
-        _using_addresses = False
+        elif id_type == 'port':
+            port = mfc_id
+        else:
+            raise ValueError("id_type must be either 'address' or 'port' when mfc_id "
+                "is used (rather than address or port keyword arguments)"
+            )
+
+    elif address is not None:
+        assert id_type is None
+        id_type = 'address'
+        mfc_id = address
+
+    elif port is not None:
+        assert id_type is None
+        id_type = 'port'
+        mfc_id = port
 
     # Raises OSError under some conditions (maybe just via pyserial?)
-    if _using_addresses:
-        port = find_port_for_controller_address(address, _last_port=_last_port)
+    if id_type == 'address':
+        try:
+            port = find_port_for_controller_address(address, _last_port=_last_port)
+        except FlowHardwareNotFound:
+            raise
+
+        # TODO also handle an IOError here? similar questions to below. or are we
+        # essentially guaranteed to be able to open it, having passed the
+        # find_port_for_controller_address call above?
         c = FlowController(port=port, address=address, timeout=read_timeout_s)
-    else:
+
+    elif id_type == 'port':
+        # TODO TODO what happens if something else is connected to this port?
+        # what about if nothing is? can have failure of either map to the same
+        # FlowHardwareNotFound error? or should i have a separate error for that?
+        # maybe i should only support addresses rather than ports, esp if i can't tell
+        # if things are connected in that case?
         c = FlowController(port=port, timeout=read_timeout_s)
 
     atexit.register(c.close)
@@ -172,7 +209,7 @@ def open_alicat_controller(mfc_id=None, *, port=None, address=None,
         if check_gas_is_air:
             gas = data['gas']
             if gas != 'Air':
-                id_str = address if using_addresses else f'on {port}'
+                id_str = address if id_type == 'address' else f'on {port}'
                 raise RuntimeError(f'gas on MFC {id_str} was configured '
                     f"to '{gas}', but was expecting 'Air'"
                 )
@@ -185,20 +222,6 @@ def open_alicat_controller(mfc_id=None, *, port=None, address=None,
         _mfc_id2initial_get_output[mfc_id] = data
 
     return c
-
-
-def get_mfc_id(mfc_trial_dict):
-    """Takes dict w/ config for one MFC at one trial to either port/address.
-
-    Requires that using_addresses is either True/False (set by open_alicat_controllers)
-    """
-    if using_addresses is None:
-        raise RuntimeError('flow.using_addresses must be set True/False')
-
-    elif using_addresses:
-        return mfc_trial_dict['address']
-    else:
-        return mfc_trial_dict['port']
 
 
 def _are_flows_constant(mfc_id2flows):
@@ -214,13 +237,30 @@ def _last_address2port_cache_fname(mkdir=False):
     return util.user_data_dir(mkdir=mkdir) / 'last_address2port.yaml'
 
 
-# TODO refactor into a class if i'm gonna have ~global state like this?
-_mfc_id2last_flow_rate = dict()
+def handle_flow_control_requirement(config_dict, err, warn_msg: str) -> None:
+    require_flow_controllers = config_dict.get('require_flow_controllers')
+    assert require_flow_controllers in (True, False, None)
+
+    if require_flow_controllers == True:
+        raise err
+
+    elif require_flow_controllers is None:
+        # TODO test formatting is what i want
+        warnings.warn(str(err))
+        print(warn_msg)
+
+    elif require_flow_controllers == False:
+        pass
+
+
 def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
     """Returns a dict of str port/address -> opened alicat.FlowController
-    """
-    global using_addresses
 
+    Raises:
+        FlowHardwareNotFound (see `find_port_for_controller_address`)
+    """
+    # TODO move into find_port_for_controller_address (set a "private" global cache
+    # var)?
     cache_fname = _last_address2port_cache_fname(mkdir=True)
     last_address2port = None
     if cache_fname.exists():
@@ -237,22 +277,42 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
     # olf.run will have called validate_flow_setpoints_sequence on the input already
     # (via validate_config_dict), so we can assume that it is either all addresses or
     # all ports, and that all trials have data for all MFCs (among other things).
-    # TODO maybe just replace w/ module level one? if at least for consistency...
-    using_addresses = 'address' in flow_setpoints_sequence[0][0]
+    first_flow_setpoint_dict = flow_setpoints_sequence[0][0]
+
+    if 'address' in first_flow_setpoint_dict:
+        id_type = 'address'
+
+    elif 'port' in first_flow_setpoint_dict:
+        id_type = 'port'
+    else:
+        raise ValueError("first flow controller settings missing 'address' or 'port'")
 
     mfc_id_set = set()
     mfc_id2flows = dict()
     for trial_setpoints in flow_setpoints_sequence:
         for one_controller_setpoint in trial_setpoints:
-            mfc_id = get_mfc_id(one_controller_setpoint)
+            mfc_id = one_controller_setpoint[id_type]
             mfc_id_set.add(mfc_id)
 
-            # TODO factor out
             sccm = one_controller_setpoint['sccm']
             if mfc_id not in mfc_id2flows:
                 mfc_id2flows[mfc_id] = [sccm]
             else:
                 mfc_id2flows[mfc_id].append(sccm)
+
+    # Checking we can find the ports of all flow controller addresses before we try
+    # opening any, so that we can decide not to err if require_flow_controllers=False
+    if id_type == 'address':
+        for address in mfc_id_set:
+            last_port = None
+            if last_address2port is not None:
+                last_port = last_address2port[address]
+
+            try:
+                port = find_port_for_controller_address(address, _last_port=last_port)
+
+            except FlowHardwareNotFound:
+                raise
 
     if _DEBUG:
         start_s = time.time()
@@ -263,13 +323,25 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
 
     for mfc_id in sorted_mfc_ids:
         last_port = None
-        if using_addresses and last_address2port is not None:
+        # TODO rename to address2last_port (and elsewhere)?
+        if id_type == 'address' and last_address2port is not None:
             last_port = last_address2port[mfc_id]
 
         print(f'- {mfc_id} ...', end='', flush=True)
-        c = open_alicat_controller(mfc_id, _skip_read_check=_skip_read_check,
-            _last_port=last_port, verbose=verbose
-        )
+
+        try:
+            c = open_alicat_controller(mfc_id, id_type=id_type, verbose=verbose,
+                _skip_read_check=_skip_read_check, _last_port=last_port
+            )
+
+        # TODO TODO if i end up using a different error type when unable to open/find
+        # MFCs, in the case where id_type='port', make sure to handle that error too
+        except FlowHardwareNotFound:
+            print()
+            # (relying on atexit close calls established in open_alicat_controller to
+            # close any controllers already opened successfully)
+            raise
+
         mfc_id2flow_controller[mfc_id] = c
         print('done', flush=True)
 
@@ -316,6 +388,7 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
 # of setpoint, so would probably be good to have the electrical output of each
 # flow meter in thorsync, if that works on our models + alongside serial usage)
 _called_set_flow_setpoints = False
+_mfc_id2last_flow_rate = dict()
 def set_flow_setpoints(mfc_id2flow_controller, trial_setpoints,
     check_set_flows=False, silent=False, verbose=False):
     """
@@ -337,10 +410,19 @@ def set_flow_setpoints(mfc_id2flow_controller, trial_setpoints,
             print('flows (mL/min): ', end='')
             short_strs = []
 
+    id_type = None
     erred = False
     for one_controller_setpoint in trial_setpoints:
 
-        mfc_id = get_mfc_id(one_controller_setpoint)
+        if id_type is None:
+            if 'address' in one_controller_setpoint:
+                id_type = 'address'
+            elif 'port' in one_controller_setpoint:
+                id_type = 'port'
+
+        assert id_type is not None,  'prior validation should have caught'
+
+        mfc_id = one_controller_setpoint[id_type]
         sccm = one_controller_setpoint['sccm']
 
         unchanged = False
@@ -383,8 +465,8 @@ def set_flow_setpoints(mfc_id2flow_controller, trial_setpoints,
 
         _mfc_id2last_flow_rate[mfc_id] = sccm
 
-        # TODO TODO TODO shouldn't i need to wait some amount of time for it to achieve
-        # the setpoint? what value is appropriate?
+        # TODO TODO shouldn't i need to wait some amount of time for it to achieve the
+        # setpoint? what value is appropriate?
         if check_set_flows:
             data = c.get()
 
@@ -429,9 +511,6 @@ def restore_initial_setpoints(mfc_id2flow_controller, verbose=False):
 total_flow_key = 'total_flow_ml_per_min'
 odor_flow_key = 'odor_flow_ml_per_min'
 
-class FlowHardwareNotConfiguredError(Exception):
-    pass
-
 def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_config):
 
     def _n_trials(config_dict):
@@ -439,6 +518,7 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
 
     # Already has what we would add
     if flow_setpoints_sequence_key in generated_config:
+        # TODO err here?
         return generated_config
 
     # No experiment-wide flow specified
@@ -452,6 +532,18 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
 
     if odor_flow_key not in input_config_dict:
         raise ValueError(f'{odor_flow_key} must be set if {total_flow_key} is')
+
+    # Previously any generated config containing the 'flow_setpoints_sequence' key
+    # would be treated as if the flow controllers were required. Since I decided not to
+    # check I can find the flow controllers before generating the config, I'm not also
+    # threading this through, so that decisions on whether to err can be made after the
+    # config is generated.
+    if require_flow_controllers_key in input_config_dict:
+        require_flow_controllers = input_config_dict[require_flow_controllers_key]
+
+        # TODO deepcopy instead?
+        generated_config = generated_config.copy()
+        generated_config[require_flow_controllers_key] = require_flow_controllers
 
     _, _, is_single_manifold = common.get_available_pins(hardware_dict)
 
@@ -477,9 +569,9 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
     # - forbidding mismatch of ports/addresses
     # - warning if using ports rather than addresses
     # TODO refactor
-    using_addresses = None
+    _using_addresses = None
     def _get_mfc_id(key_prefix):
-        nonlocal using_addresses
+        nonlocal _using_addresses
         already_found = False
         mfc_id = None
         for id_type in ('address', 'port'):
@@ -489,18 +581,20 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
                 assert not already_found, 'multiple flow controller ID types specified'
                 already_found = True
                 if id_type == 'address':
-                    assert using_addresses in (None, True), 'multiple MFC id types!'
-                    using_addresses = True
+                    assert _using_addresses != False, 'multiple MFC id types!'
+                    _using_addresses = True
                 else:
-                    assert using_addresses in (None, False), 'multiple MFC id types!'
-                    using_addresses = False
+                    assert _using_addresses != True, 'multiple MFC id types!'
+                    _using_addresses = False
 
                 mfc_id = hardware_dict[key]
 
         if mfc_id is None:
-            raise FlowHardwareNotConfiguredError('flow controller ID not found at '
-                f'either {key_prefix}[address|port] in hardware config, but flow '
-                'setpoints were configured!'
+            # TODO mention path to hardware config? i suppose i don't have access to
+            # that here...
+            raise FlowHardwareNotConfigured('flow controller ID not found at either '
+                f'{key_prefix}[address|port] in hardware config, but flow setpoints '
+                'were configured!'
             )
 
         return mfc_id
@@ -508,9 +602,8 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
     carrier_mfc_id = _get_mfc_id('carrier_flow_controller_')
     odor_mfc_ids = sorted([_get_mfc_id(p) for p in odor_mfc_prefixes])
 
-    assert using_addresses is not None
-
-    id_type = 'address' if using_addresses else 'port'
+    assert _using_addresses is not None
+    id_type = 'address' if _using_addresses else 'port'
 
     def one_experiment_config_with_flow_sequence(config_dict):
         n_trials = _n_trials(config_dict)
@@ -520,6 +613,7 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
             [{id_type: mfc_id, 'sccm': odor_flow_sccm} for mfc_id in odor_mfc_ids]
             for _ in range(n_trials)
         ]
+        # TODO deepcopy instead?
         config_dict = config_dict.copy()
         config_dict[flow_setpoints_sequence_key] = flow_setpoints_sequence
         return config_dict

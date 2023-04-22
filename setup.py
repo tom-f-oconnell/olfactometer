@@ -14,7 +14,11 @@ setup(
         'grpcio-tools',
 
         'pyserial',
-        'pyyaml',
+
+        # >=5.1 required for sort_keys[=False] dump kwarg.
+        # https://stackoverflow.com/questions/16782112
+        # was testing with 5.4.1 on Ubuntu 20.04.
+        'PyYAML>=5.1',
 
         # TODO does it require git installed in advance? if so, specify in
         # windows part of README and include in Dockerfile

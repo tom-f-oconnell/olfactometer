@@ -1,7 +1,7 @@
 import os
 
-IN_DOCKER = 'OLFACTOMETER_IN_DOCKER' in os.environ
-_DEBUG = 'OLFACTOMETER_DEBUG' in os.environ
+IN_DOCKER =  os.environ.get('OLFACTOMETER_IN_DOCKER') == '1'
+_DEBUG = os.environ.get('OLFACTOMETER_DEBUG') == '1'
 
 # TODO TODO could try to replace everything using this w/
 # pkg_resources.find_resource, though not sure this will actually support any

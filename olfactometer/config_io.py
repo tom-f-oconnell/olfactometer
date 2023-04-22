@@ -3,12 +3,14 @@ Functions for loading / saving configuration.
 """
 
 import glob
+from datetime import datetime
 import json
 import os
-from os.path import split, join, isdir, isfile, splitext
+from os.path import split, join, isdir, isfile, splitext, exists
 import sys
 import tempfile
 from pprint import pformat
+from typing import Union, Sequence, Dict, Any
 
 from google.protobuf import json_format
 import yaml
@@ -232,3 +234,70 @@ def load(config=None):
 
     return all_required_data, config_dict
 
+
+# TODO ~pathlike type hint for generated_yaml_fname
+def write_yaml(generated_config: Dict[str, Any], generated_yaml_fname) -> None:
+    # TODO should i be using safe_dump instead? (modify SafeDumper instead
+    # of Dumper if so)
+    # So that there are not aliases (references) within the generated YAML
+    # (they make it less readable).
+    # https://stackoverflow.com/questions/13518819
+    yaml.Dumper.ignore_aliases = lambda *args : True
+
+    # TODO what is default_style kwarg to pyyaml dump? docs don't seem to say...
+    # TODO maybe i want to make a custom dumper that just uses this style for pin groups
+    # though? right now it's pretty ugly when everything is using this style...
+    #
+    # Setting this to True would make lists single-line by default, which I want for
+    # terminal stuff, but I don't like what this flow style does elsewhere.
+    default_flow_style = False
+
+    assert not exists(generated_yaml_fname)
+    with open(generated_yaml_fname, 'w') as f:
+        yaml.dump(generated_config, f, default_flow_style=default_flow_style,
+            sort_keys=False
+        )
+
+
+# TODO change to returning Path objects?
+def write_timestamped_config(
+    generated_config: Union[Dict[str, Any], Sequence[Dict[str, Any]]],
+    verbose: bool = True) -> str:
+    """Writes config to YAML file(s) under working directory, named with current time.
+
+    Returns name of file / directory where config YAML was written.
+    """
+    if type(generated_config) is dict:
+        generated_yaml_fname = datetime.now().strftime('%Y%m%d_%H%M%S_stimuli.yaml')
+        if verbose:
+            print(f'Writing generated YAML to {generated_yaml_fname}')
+
+        write_yaml(generated_config, generated_yaml_fname)
+
+        if verbose:
+            print()
+
+        return generated_yaml_fname
+
+    else:
+        # TODO squeeze list to single element if only one file would be in dir?
+
+        timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        generated_config_dir = timestamp_str + '_stimuli'
+        if verbose:
+            print(f'Writing generated YAML under ./{generated_config_dir}/')
+
+        assert not exists(generated_config_dir)
+        os.mkdir(generated_config_dir)
+
+        for i, yaml_dict in enumerate(generated_config):
+            assert type(yaml_dict) is dict
+            generated_yaml_fname = join(
+                generated_config_dir, f'{timestamp_str}_stimuli_{i}.yaml'
+            )
+            write_yaml(yaml_dict, generated_yaml_fname)
+
+        if verbose:
+            print()
+
+        return generated_config_dir
