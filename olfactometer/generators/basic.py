@@ -89,6 +89,11 @@ def make_config_dict(generator_config_yaml_dict):
 
     generated_config_dict = common.parse_common_settings(data)
 
+    # TODO add hardware config option to define priority for pins (when not all will be
+    # used), and use that to avoid picking pins on the edge of each quick change
+    # assembly (more strain on some of the parts. i should probably just remake them w/
+    # longer tubing / diff spacing tho...)
+
     available_valve_pins, pins2balances, single_manifold = common.get_available_pins(
         data, generated_config_dict
     )

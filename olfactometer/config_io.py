@@ -237,6 +237,16 @@ def load(config=None):
 
 # TODO ~pathlike type hint for generated_yaml_fname
 def write_yaml(generated_config: Dict[str, Any], generated_yaml_fname) -> None:
+
+    # Now that we are no longer letting PyYAML sort keys, we want to sort this
+    # ourselves. It makes configs / interactive output easier to read.
+    pins2odors = generated_config['pins2odors']
+    # TODO deepcopy?
+    generated_config = generated_config.copy()
+    generated_config['pins2odors'] = dict(
+        sorted(pins2odors.items(), key=lambda x: x[0])
+    )
+
     # TODO should i be using safe_dump instead? (modify SafeDumper instead
     # of Dumper if so)
     # So that there are not aliases (references) within the generated YAML
