@@ -47,6 +47,8 @@ from copy import deepcopy
 from olfactometer.generators import common
 
 
+# TODO TODO add option to ignore odors from a list of other configs (+thread thru to olf
+# CLI) (e.g. so that i don't do diagnostics in remy's megamat panel)
 def make_config_dict(generator_config_yaml_dict):
     # TODO doc the minimum expected keys of the YAML
     """
@@ -93,6 +95,9 @@ def make_config_dict(generator_config_yaml_dict):
     # used), and use that to avoid picking pins on the edge of each quick change
     # assembly (more strain on some of the parts. i should probably just remake them w/
     # longer tubing / diff spacing tho...)
+    # TODO TODO actually might make sense to add option to consolidate stuff into one
+    # manifold if possible (makes plugging holes easier, as you can parafilm/similar the
+    # whole unused row of holes in the PTFE needle manifold tube)
 
     available_valve_pins, pins2balances, single_manifold = common.get_available_pins(
         data, generated_config_dict
@@ -125,6 +130,11 @@ def make_config_dict(generator_config_yaml_dict):
         generated_config_dicts = []
         while True:
             odor_subset = unique_odors[i:(i+len(available_valve_pins))]
+
+            # without this check, would currently get one final config with empty odors
+            if len(odor_subset) == 0:
+                assert len(generated_config_dicts) > 0
+                return generated_config_dicts
 
             subset_input_config_dict = deepcopy(generator_config_yaml_dict)
             subset_input_config_dict['odors'] = odor_subset
