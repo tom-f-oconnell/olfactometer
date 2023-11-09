@@ -18,6 +18,7 @@ import pyperclip
 import yaml
 # TODO try to find a way of accessing this type without any prefix '_'s
 from google.protobuf.internal.encoder import _VarintBytes
+from readchar import readkey, key
 
 from olfactometer import config_io, util, upload, validation, flow
 from olfactometer.generators import common, basic, pair_concentration_grid
@@ -352,9 +353,9 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
     else:
         raise NotImplementedError(f"generator '{generator}' not supported")
 
-    # TODO TODO TODO add something like 'generated_from: <input YAML name>' to outputs
-    # YAML, so analysis can group stuff that was randomized from the same input data
-    # (assuming the file hadn't changed at least...)
+    # TODO add something like 'generated_from: <input YAML name>' to outputs YAML, so
+    # analysis can group stuff that was randomized from the same input data (assuming
+    # the file hadn't changed at least...)?
     # TODO maybe also w/ commit hash of any containing repo, if it tracks the file?
     # probably not worth the extra complication, esp. if including handling for
     # non-committed stuff...
@@ -372,6 +373,14 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
     # TODO refactor so addresses can also be used w/o generators
     # (why is there currently that limitation?)
     # TODO TODO refactor to flow (inside generate_flow_setpoint_sequence?)?
+    # TODO TODO TODO main priority should be not erring because of the flow controller
+    # code that nobody is currently using... (and should work that way without any
+    # special configuration / env vars ideally, maybe with some extra config to
+    # re-enable the flow stuff)
+    # TODO TODO TODO fix! want to be able to use these even if we have a config w/
+    # setpoint sequence and we are re-running that (and thus not generating from
+    # scratch, so we won't reach this code where it is now!)
+    # should i pass those thru when generating the config?
     if flow.safe_usb_ids_key in hardware_yaml_dict:
         safe_vid_pid_pairs = hardware_yaml_dict[flow.safe_usb_ids_key]
 
@@ -591,17 +600,19 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
 
     expected_duration_s = util.time_config_will_take_s(all_required_data, print_=True)
 
-    # It's a file in this case, and we are copying the file path to the clipboard.
-    if type(config) is str:
-        # TODO allow disabling this with env var (appropriately set)
-        pyperclip.copy(config)
-        print(f'Copied {config} to clipboard\n')
+    def config_path_to_clipboard():
+        # It's a file in this case, and we are copying the file path to the clipboard.
+        if type(config) is str:
+            # TODO allow disabling this with env var (appropriately set)
+            pyperclip.copy(config)
+            print(f'Copied {config} to clipboard')
+
+    config_path_to_clipboard()
+    print()
 
     util.print_pins2odors(config_dict)
     print()
 
-    # TODO maybe have option to try to save clipboard before filling it w/ pyperclip and
-    # here (just since we should have pasted by here), maybe fill w/ old contents?
     if pause_before_start:
         # TODO or maybe somehow have this default to True if a generator is
         # being used (especially if i don't add some way to have that re-use
@@ -609,7 +620,22 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         # TODO maybe warn if no pins2odors, in this case
         # TODO maybe prompt user to connect arduino if after Enter is pressed
         # here, the serial device would fail to be found in the next line
-        input('Press Enter once the odors are connected')
+
+        msg = "Press Enter to start"
+        # (the only condition in which it even would be copied to clipboard)
+        if type(config) is str:
+            msg += " ('c' to re-copy YAML path)"
+
+        print(msg)
+
+        while True:
+            k = readkey()
+
+            if k == 'c':
+                config_path_to_clipboard()
+
+            elif k == key.ENTER:
+                break
 
     # Opening flow controllers and setting initial flows.
     # Want this to happen after Enter press for the same reason as below.

@@ -51,6 +51,10 @@ setup(
 
         # TODO replace w/ platformdirs (community maintained fork of appdirs)
         'appdirs',
+
+        # for reading single characters without the Enter press builtin input(...)
+        # requires. only tried 4.0.5
+        'readchar',
     ],
     # This just duplicates what's in test_requirements.txt, because apparently
     # pip doesn't actually provide any way to install these...
