@@ -10,7 +10,14 @@ setup(
         # was using the submodule, rather than the one also in install_requires
         # below...)
         # TODO delete if unused (same w/ nanopb submodule)
-        'protobuf',
+        #
+        # <=3.20 constraint was added when troubleshooting install on Sam's desktop
+        # (22.04, in a python 3.10 venv), which initially had what seemed like it might
+        # be a circular dependency error importing olf_pb2 (generated), but eventually
+        # another error was solved by this, and the former error did not return.
+        # May reappear in fresh installs, and a genuine fix may be unrelated.
+        # Issue may/may-not only be reproducible in python 3.10
+        'protobuf<=3.20',
         'grpcio-tools',
 
         'pyserial',
@@ -42,6 +49,7 @@ setup(
 
         'pyperclip',
 
+        # TODO replace w/ platformdirs (community maintained fork of appdirs)
         'appdirs',
     ],
     # This just duplicates what's in test_requirements.txt, because apparently

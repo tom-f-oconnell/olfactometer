@@ -23,6 +23,10 @@ from olfactometer.generators.common import validate_hardware_dict
 # TODO is pb2 suffix indication i'm not using the version i want?
 # syntax was version 3, and the generated code seems to acknowledge that...
 from olfactometer import olf_pb2
+# This might have been (temporarily) necessary during a fresh install on python 3.10, to
+# get the olf_pb2 import to not fail (may or may not have actually been a circular
+# dependency issue). Issue may still present in some future fresh installs...
+#import olfactometer
 
 
 HARDWARE_DIR_ENVVAR = 'OLFACTOMETER_HARDWARE_DIR'
@@ -120,6 +124,7 @@ def load_dict(config_dict, message=None):
     """Returns a populated protobuf message and a dict with extra metadata.
     """
     if message is None:
+        #message = olfactometer.olf_pb2.AllRequiredData()
         message = olf_pb2.AllRequiredData()
 
     # Always ignoring unknown fields for now, so the generators can store extra
@@ -209,6 +214,7 @@ def load(config=None):
             config = temp.name
             temp.write(stdin_str)
 
+    #all_required_data = olfactometer.olf_pb2.AllRequiredData()
     all_required_data = olf_pb2.AllRequiredData()
 
     if type(config) is dict:
