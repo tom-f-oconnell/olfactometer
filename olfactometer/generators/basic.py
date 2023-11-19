@@ -94,10 +94,7 @@ def make_config_dict(generator_config_yaml_dict):
     # TODO add hardware config option to define priority for pins (when not all will be
     # used), and use that to avoid picking pins on the edge of each quick change
     # assembly (more strain on some of the parts. i should probably just remake them w/
-    # longer tubing / diff spacing tho...)
-    # TODO TODO actually might make sense to add option to consolidate stuff into one
-    # manifold if possible (makes plugging holes easier, as you can parafilm/similar the
-    # whole unused row of holes in the PTFE needle manifold tube)
+    # longer tubing / diff spacing tho...)?
 
     available_valve_pins, pins2balances, single_manifold = common.get_available_pins(
         data, generated_config_dict
@@ -107,6 +104,7 @@ def make_config_dict(generator_config_yaml_dict):
 
     n_odors = len(unique_odors)
     if n_odors > len(available_valve_pins):
+
         # TODO should it be an error if this is False, but randomize_presentation_order
         # is True?
         #
@@ -147,8 +145,26 @@ def make_config_dict(generator_config_yaml_dict):
 
             i += len(available_valve_pins)
 
-    # The means of generating the random odor vial <-> pin (valve) mapping.
-    odor_pins = random.sample(available_valve_pins, n_odors)
+    fit_into_one_manifold_if_possible = data.get('fit_into_one_manifold_if_possible',
+        True
+    )
+    odor_pins = None
+    if fit_into_one_manifold_if_possible:
+        balance_pins = set(pins2balances.values())
+        pin_groups = [
+            {p for p, b in pins2balances.items() if b == curr_b}
+            for curr_b in balance_pins
+        ]
+        del balance_pins
+
+        groups_that_could_fit_all = [g for g in pin_groups if (len(g) >= n_odors)]
+        if len(groups_that_could_fit_all) > 0:
+            group_to_use = random.choice(groups_that_could_fit_all)
+            odor_pins = random.sample(group_to_use, n_odors)
+
+    if odor_pins is None:
+        # The means of generating the random odor vial <-> pin (valve) mapping.
+        odor_pins = random.sample(available_valve_pins, n_odors)
 
     # The YAML dump downstream (which SHOULD include this data) should sort the
     # keys by default (just for display purposes, but still what I want).

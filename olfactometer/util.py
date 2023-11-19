@@ -223,10 +223,13 @@ def get_pins2odors(config_dict):
     return config_dict.get('pins2odors')
 
 
-def print_pins2odors(config_dict, header=True, **format_odor_kwargs):
+def print_pins2odors(config_dict, header=True, **format_odor_kwargs) -> bool:
+    """
+    Returns whether we printed anything.
+    """
     pins2odors = get_pins2odors(config_dict)
     if pins2odors is None:
-        return
+        return False
 
     # TODO TODO also print balances here (at least optionally) (both in
     # single / multiple manifold cases). maybe visually separated somewhat.
@@ -236,6 +239,8 @@ def print_pins2odors(config_dict, header=True, **format_odor_kwargs):
 
     for p, o in pins2odors.items():
         print(f' {p}: {format_odor(o, **format_odor_kwargs)}')
+
+    return True
 
 # TODO add fn that takes a pin_sequence (or pinlist_at_each_trial equivalent),
 # and pins2odors, and prints it all nicely

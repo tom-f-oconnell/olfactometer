@@ -277,12 +277,12 @@ def get_available_pins(data: ConfigDict,
         validation.validate_pin(group1_balance_pin)
         validation.validate_pin(group2_balance_pin)
 
-        available_valve_pins = \
-            available_group1_valve_pins + available_group2_valve_pins
+        available_valve_pins = available_group1_valve_pins + available_group2_valve_pins
 
         pins2balances = dict()
         for p in available_group1_valve_pins:
             pins2balances[p] = group1_balance_pin
+
         for p in available_group2_valve_pins:
             pins2balances[p] = group2_balance_pin
 

@@ -585,8 +585,9 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
     config_path_to_clipboard()
     print()
 
-    util.print_pins2odors(config_dict)
-    print()
+    printed = util.print_pins2odors(config_dict)
+    if printed:
+        print()
 
     if pause_before_start:
         # TODO or maybe somehow have this default to True if a generator is
