@@ -33,7 +33,6 @@ class FlowHardwareNotFound(IOError):
 require_flow_controllers_key = 'require_flow_controllers'
 flow_setpoints_sequence_key = 'flow_setpoints_sequence'
 
-safe_usb_ids_key = 'safe_usb_ids_to_check_for_mfcs'
 # TODO specify whether they should be integer or str (former i think?)
 #
 # Must be set to iterable of tuples of (vendor ID, product ID) (for USB-to-serial
@@ -43,9 +42,7 @@ safe_usb_ids_key = 'safe_usb_ids_to_check_for_mfcs'
 # (like the expensive laser) which could do something unexpected given the same input.
 # TODO update hardware config validation to also check these are in the right format
 # (and that they are in the range for USB ids too, ideally)
-# NOTE: currently this is set in olf (but only if generators used...)
-# TODO TODO why did i have this as a global? refactor.
-safe_usb_ids_to_check_for_mfcs = None
+safe_usb_ids_key = 'safe_usb_ids_to_check_for_mfcs'
 
 # This cost is incurrent 6 times in checking whether a FlowMeter is connected
 # (two <flowmeter>.get() calls, w/ currently-unchangeable 2 retries for each)
@@ -57,14 +54,19 @@ read_timeout_s = 0.1
 
 _address2port = dict()
 _whitelist_ports = set()
-def find_port_for_controller_address(address, unsafe=False, _last_port=None):
+def find_port_for_controller_address(address, safe_usb_ids_to_check_for_mfcs=None,
+    unsafe=False, _last_port=None):
     """
     Raises FlowHardwareNotFound if no flow controller can be found with this address.
     """
+    # TODO just raise FlowHardwareNotConfigured probably (as if ID for a manifold's flow
+    # controller was left out of hardware config)
     if safe_usb_ids_to_check_for_mfcs is None and not unsafe:
+        # TODO mention that unsafe=True can be set? or just delete if not?
+        # if former, thread thru fns that call this...
         raise ValueError('flow.safe_usb_ids_to_check_for_mfcs must be set in order to '
             'reference flow controllers by address (rather than by port). adding a list'
-            " like 'safe_usb_ids_to_check_for_mfcs: [[<vendor ID #1>, <product ID #1>]'"
+            f" like '{safe_usb_ids_key}: [[<vendor ID #1>, <product ID #1>]'"
             ", ... ]' to your hardware config YAML, and this should be set for you"
         )
 
@@ -122,8 +124,9 @@ def find_port_for_controller_address(address, unsafe=False, _last_port=None):
 
 _mfc_id2initial_get_output = dict()
 def open_alicat_controller(mfc_id=None, *, port=None, address=None, id_type=None,
-    save_initial_setpoints=True, check_gas_is_air=True, _skip_read_check=False,
-    _last_port=None, verbose=False) -> FlowController:
+    save_initial_setpoints=True, check_gas_is_air=True, verbose=False,
+    safe_usb_ids_to_check_for_mfcs=None, _skip_read_check=False, _last_port=None
+    ) -> FlowController:
     """Returns opened alicat.FlowController for controller on input port/address.
 
     Also registers atexit function to close connection and restore previous setpoints.
@@ -166,7 +169,10 @@ def open_alicat_controller(mfc_id=None, *, port=None, address=None, id_type=None
     # Raises OSError under some conditions (maybe just via pyserial?)
     if id_type == 'address':
         try:
-            port = find_port_for_controller_address(address, _last_port=_last_port)
+            port = find_port_for_controller_address(address,
+                safe_usb_ids_to_check_for_mfcs=safe_usb_ids_to_check_for_mfcs,
+                _last_port=_last_port
+            )
         except FlowHardwareNotFound:
             raise
 
@@ -238,16 +244,20 @@ def _last_address2port_cache_fname(mkdir=False):
 
 
 def handle_flow_control_requirement(config_dict, err, warn_msg: str) -> None:
-    require_flow_controllers = config_dict.get('require_flow_controllers')
+    require_flow_controllers = config_dict.get(require_flow_controllers_key)
     assert require_flow_controllers in (True, False, None)
 
     if require_flow_controllers == True:
+        # TODO add bit to error message saying it's because
+        # require_flow_controllers=True that it is an error rather than being
+        # ignored/warning
         raise err
 
     elif require_flow_controllers is None:
-        # TODO test formatting is what i want
-        warnings.warn(str(err))
-        print(warn_msg)
+        # TODO replace w/ logging.warning (here and all other warnings calls)?
+        warnings.warn(f'{str(err)}\n{warn_msg}\n(set require_flow_controllers=False '
+            'to silence)'
+        )
 
     elif require_flow_controllers == False:
         pass
@@ -259,6 +269,26 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
     Raises:
         FlowHardwareNotFound (see `find_port_for_controller_address`)
     """
+    safe_usb_ids_to_check_for_mfcs = None
+    # TODO require this is here? thread unsafe= kwarg thru (from inner find_* call)?
+    if safe_usb_ids_key in config_dict:
+        safe_vid_pid_pairs = config_dict[safe_usb_ids_key]
+
+        # TODO move to hardware config validation (or just general flow validation? now
+        # i want to also allow these in generator output YAMLs...)
+        for pair in safe_vid_pid_pairs:
+            assert len(pair) == 2
+            for x in pair:
+                assert type(x) is int
+
+        safe_usb_ids_to_check_for_mfcs = {tuple(p) for p in safe_vid_pid_pairs}
+
+        if _DEBUG:
+            # TODO just skip vid=None, pid=None (seems to exist for /dev/ttyS0 on my
+            # linux install, at least)
+            print('USB (vid, pid) whitelist, to allow searching for MFCs:')
+            pprint(safe_usb_ids_to_check_for_mfcs)
+
     # TODO move into find_port_for_controller_address (set a "private" global cache
     # var)?
     cache_fname = _last_address2port_cache_fname(mkdir=True)
@@ -309,7 +339,10 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
                 last_port = last_address2port[address]
 
             try:
-                port = find_port_for_controller_address(address, _last_port=last_port)
+                port = find_port_for_controller_address(address,
+                    safe_usb_ids_to_check_for_mfcs=safe_usb_ids_to_check_for_mfcs,
+                    _last_port=last_port
+                )
 
             except FlowHardwareNotFound:
                 raise
@@ -331,6 +364,7 @@ def open_alicat_controllers(config_dict, _skip_read_check=False, verbose=False):
 
         try:
             c = open_alicat_controller(mfc_id, id_type=id_type, verbose=verbose,
+                safe_usb_ids_to_check_for_mfcs=safe_usb_ids_to_check_for_mfcs,
                 _skip_read_check=_skip_read_check, _last_port=last_port
             )
 
@@ -513,13 +547,11 @@ odor_flow_key = 'odor_flow_ml_per_min'
 
 def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_config):
 
-    def _n_trials(config_dict):
-        return len(config_dict['pin_sequence']['pin_groups'])
-
-    # Already has what we would add
-    if flow_setpoints_sequence_key in generated_config:
-        # TODO err here?
-        return generated_config
+    # used to just return input here, but trying to generate this twice should indicate
+    # code issue
+    assert flow_setpoints_sequence_key not in generated_config, (
+        'trying to generate flow config twice'
+    )
 
     # No experiment-wide flow specified
     if not ((total_flow_key in input_config_dict) or
@@ -532,15 +564,6 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
 
     if odor_flow_key not in input_config_dict:
         raise ValueError(f'{odor_flow_key} must be set if {total_flow_key} is')
-
-    # Previously any generated config containing the 'flow_setpoints_sequence' key
-    # would be treated as if the flow controllers were required. Since I decided not to
-    # check I can find the flow controllers before generating the config, I'm not also
-    # threading this through, so that decisions on whether to err can be made after the
-    # config is generated.
-    require_flow_controllers = None
-    if require_flow_controllers_key in input_config_dict:
-        require_flow_controllers = input_config_dict[require_flow_controllers_key]
 
     _, _, is_single_manifold = common.get_available_pins(hardware_dict)
 
@@ -589,6 +612,8 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
         if mfc_id is None:
             # TODO mention path to hardware config? i suppose i don't have access to
             # that here...
+            # TODO mention which group it should be associated with (or at least show
+            # how keys should be named?)
             raise FlowHardwareNotConfigured('flow controller ID not found at either '
                 f'{key_prefix}[address|port] in hardware config, but flow setpoints '
                 'were configured!'
@@ -596,11 +621,27 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
 
         return mfc_id
 
+    require_flow_controllers = input_config_dict.get(require_flow_controllers_key)
+
     carrier_mfc_id = _get_mfc_id('carrier_flow_controller_')
     odor_mfc_ids = sorted([_get_mfc_id(p) for p in odor_mfc_prefixes])
 
+    # _using_addresses only defined after all the _get_mfc_id calls in previous 2 lines
+    if _using_addresses:
+        if safe_usb_ids_key not in hardware_dict:
+            # TODO could also thread unsafe= thru and mention that option, but might
+            # also want to unsupport that...
+            raise FlowHardwareNotConfigured('flow controllers referenced by addresses '
+                '(the IDs set in the physical Alicat config; rather than raw ports), '
+                f'but {safe_usb_ids_key} not in hardware config YAML. will not search '
+                'ports without this specified!'
+            )
+
     assert _using_addresses is not None
     id_type = 'address' if _using_addresses else 'port'
+
+    def _n_trials(config_dict):
+        return len(config_dict['pin_sequence']['pin_groups'])
 
     def one_experiment_config_with_flow_sequence(config_dict):
         n_trials = _n_trials(config_dict)
@@ -615,6 +656,9 @@ def generate_flow_setpoint_sequence(input_config_dict, hardware_dict, generated_
 
         if require_flow_controllers is not None:
             config_dict[require_flow_controllers_key] = require_flow_controllers
+
+        if safe_usb_ids_key in hardware_dict:
+            config_dict[safe_usb_ids_key] = hardware_dict[safe_usb_ids_key]
 
         config_dict[flow_setpoints_sequence_key] = flow_setpoints_sequence
         return config_dict

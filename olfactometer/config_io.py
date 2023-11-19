@@ -242,6 +242,7 @@ def load(config=None):
 
 
 # TODO ~pathlike type hint for generated_yaml_fname
+# TODO factor this Dict[str, Any] to an alias -> use throughout (here and other modules)
 def write_yaml(generated_config: Dict[str, Any], generated_yaml_fname) -> None:
 
     # Now that we are no longer letting PyYAML sort keys, we want to sort this

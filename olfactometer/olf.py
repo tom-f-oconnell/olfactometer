@@ -370,32 +370,6 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
     # each should be written to their own YAML file.
     generated_config = generator_fn(generator_yaml_dict)
 
-    # TODO refactor so addresses can also be used w/o generators
-    # (why is there currently that limitation?)
-    # TODO TODO refactor to flow (inside generate_flow_setpoint_sequence?)?
-    # TODO TODO TODO main priority should be not erring because of the flow controller
-    # code that nobody is currently using... (and should work that way without any
-    # special configuration / env vars ideally, maybe with some extra config to
-    # re-enable the flow stuff)
-    # TODO TODO TODO fix! want to be able to use these even if we have a config w/
-    # setpoint sequence and we are re-running that (and thus not generating from
-    # scratch, so we won't reach this code where it is now!)
-    # should i pass those thru when generating the config?
-    if flow.safe_usb_ids_key in hardware_yaml_dict:
-        safe_vid_pid_pairs = hardware_yaml_dict[flow.safe_usb_ids_key]
-
-        # TODO move to hardware config validation
-        for pair in safe_vid_pid_pairs:
-            assert len(pair) == 2
-            for x in pair:
-                assert type(x) is int
-
-        flow.safe_usb_ids_to_check_for_mfcs = {tuple(p) for p in safe_vid_pid_pairs}
-
-        if _DEBUG:
-            print('USB (vid, pid) whitelist, to allow searching for MFCs:')
-            pprint(flow.safe_usb_ids_to_check_for_mfcs)
-
     # TODO if i ever refactor "generators" to OOP rather than mostly independent
     # make_config_dict fns, include this as a default step that happens after pinlist is
     # populated
@@ -403,9 +377,10 @@ def check_need_to_preprocess_config(config, hardware_config=None, verbose=False)
         generated_config = flow.generate_flow_setpoint_sequence(generator_yaml_dict,
             hardware_yaml_dict, generated_config
         )
+
     except flow.FlowHardwareNotConfigured as err:
         flow.handle_flow_control_requirement(generator_yaml_dict, err,
-            'Flow controller configuration will not be in generated YAML!\n'
+            'Flow controller configuration will not be in generated YAML!'
         )
 
     # TODO delete? why would i want this? or do i use it [/ might i want to] for some
@@ -637,6 +612,12 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
             elif k == key.ENTER:
                 break
 
+    # Want this to happen after we press Enter (when we do), so that we can show the
+    # pins -> odors for a few (started in parallel), but only re-run the config we were
+    # actually trying to run.
+    if type(config) is str:
+        util.write_last_attempted_config_file(config)
+
     # Opening flow controllers and setting initial flows.
     # Want this to happen after Enter press for the same reason as below.
     flow_setpoints_sequence = None
@@ -649,7 +630,7 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
 
         except flow.FlowHardwareNotFound as err:
             flow.handle_flow_control_requirement(config_dict, err,
-                'Not using flow controllers!\n'
+                'Not using flow controllers!'
             )
 
     if flow_setpoints_sequence is not None:
@@ -669,12 +650,6 @@ def run(config, port=None, fqbn=None, do_upload=False, timeout_s=2.0,
         )
         time.sleep(mfc_settling_wait_s)
         print('done', flush=True)
-
-    # Want this to happen after we press Enter (when we do), so that we can show the
-    # pins -> odors for a few (started in parallel), but only re-run the config we were
-    # actually trying to run.
-    if type(config) is str:
-        util.write_last_attempted_config_file(config)
 
     if not settings.follow_hardware_timing:
         # TODO factor this + above calculation of duration into separate CLI util
@@ -1014,6 +989,11 @@ def config_iter(config, hardware_config=None, _skip_config_preprocess_check=Fals
         )
 
 
+# TODO type hint config -> remove type stuff from doc
+# TODO also accept str config to refer to a directory containing YAMLs
+# (and accept index to start from a particular file within? idk... try to support
+# olf-retry/similar that way too? to restart a sequence from the file that was
+# interrupted?)
 def main(config, hardware_config=None, _skip_config_preprocess_check=False,
     verbose=False, **kwargs):
     """Runs one or several configuration inputs on the olfactometer.
