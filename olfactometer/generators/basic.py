@@ -188,18 +188,24 @@ def make_config_dict(generator_config_yaml_dict):
             assert len(odors) == 1
             randomize_presentation_order = False
 
-    n_repeats_key = 'n_repeats'
-    if n_repeats_key in data:
-        n_repeats = data[n_repeats_key]
-        # TODO TODO maybe rename randomize_presentation_order and/or add another
-        # possible value and/or add another flag for controlling whether
-        # presentations of a particular odor should be kept together
-        if randomize_presentation_order:
-            warnings.warn('current implementation only randomizes across odors,'
-                ' keeping presentations of any given odor together'
-            )
-    else:
-        n_repeats = 1
+    consecutive_repeats = data.get('consecutive_repeats', True)
+
+    block_shuffle_key = 'independent_block_shuffles'
+    if block_shuffle_key in data:
+        assert randomize_presentation_order, ('randomize_presentation_order must be '
+            f'True if {block_shuffle_key} specified'
+        )
+        # otherwise there are no "blocks", as all presentations of an odor are kept
+        # consecutive.
+        assert not consecutive_repeats, (f'{block_shuffle_key} should only be '
+            'specified if consecutive_repeats=False also specified'
+        )
+        independent_block_shuffles = data.get(block_shuffle_key, True)
+
+    # if consecutive_repeats=False, this is number of "blocks". otherwise, it is the
+    # number of consecutive presentations of each odor. in either case, it's the number
+    # of times each odor will be presented.
+    n_repeats = data.get('n_repeats', 1)
 
     # TODO refactor? also, if i make an Odor class w/ a meaningful hash, could simplify
     # this (as well as similar code in common.get_odors)
@@ -213,14 +219,34 @@ def make_config_dict(generator_config_yaml_dict):
                 break
         assert found_pin
 
-    if randomize_presentation_order:
-        # This re-orders odor_pins in-place (it modifies it, rather than
-        # returning something modified).
-        random.shuffle(trial_pins_norepeats)
+    if consecutive_repeats:
+        if randomize_presentation_order:
+            # Was previously using random.shuffle (which modifies in place) here, but
+            # switched to random.sample to make more uniform with new code below. From
+            # docs: "To shuffle an immutable sequence and return a new shuffled list,
+            # use sample(x, k=len(x)) instead [of random.shuffle]."
+            trial_pins_norepeats = random.sample(trial_pins_norepeats,
+                k=len(trial_pins_norepeats)
+            )
 
-    # TODO worth factoring this into a fn in common for expanding to # of
-    # trials? could accept arbitrary lists?
-    trial_pinlists = [[p] for p in trial_pins_norepeats for _ in range(n_repeats)]
+        trial_pins = [p for p in trial_pins_norepeats for _ in range(n_repeats)]
+    else:
+        trial_pins = []
+        if independent_block_shuffles:
+            for _ in range(n_repeats):
+                curr_block_shuffle = random.sample(trial_pins_norepeats,
+                    k=len(trial_pins_norepeats)
+                )
+                trial_pins.extend(curr_block_shuffle)
+        else:
+            # in this case, each block has the same (pseudo-random) order
+            block_shuffle = random.sample(trial_pins_norepeats,
+                k=len(trial_pins_norepeats)
+            )
+            for _ in range(n_repeats):
+                trial_pins.extend(block_shuffle)
+
+    trial_pinlists = [[p] for p in trial_pins]
 
     pinlist_at_each_trial = common.add_balance_pins(
         trial_pinlists, pins2balances
