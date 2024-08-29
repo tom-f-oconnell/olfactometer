@@ -96,9 +96,13 @@ def validate_pin_sequence(pin_sequence, warn=True):
             f'({gc} > {mc})'
         )
 
+    # TODO delete?
     if _DEBUG and warn:
         glens = {len(g.pins) for g in pin_sequence.pin_groups}
         if len(glens) > 1:
+            # TODO don't do this if we have some odors presented alone as well as some
+            # air mixtures? (doesn't really matter since just warning in _DEBUG case
+            # anyway)
             warnings.warn(f'PinSequence has unequal length groups ({glens})')
 
 

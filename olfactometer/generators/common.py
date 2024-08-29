@@ -346,16 +346,63 @@ def validate_hardware_dict(hardware_dict, allow_unknown_keys=True):
             )
 
 
+air_mix_key = 'air_mix'
+
+def is_air_mix(odor: dict) -> bool:
+    # not validating here (should be done via validate_odors), but this key should point
+    # to a list of aliases (which should all refer to other single odor vials attached
+    # for the experiment)
+    return air_mix_key in odor
+
+
 # TODO move to validation.py?
 def validate_odors(odors: List[dict]) -> None:
-    # Each element of odors, which should each be a dict, must at least have a `name`
+    assert type(odors) is list
+    # Each element of odors, which should each be a dict, must at least* have a `name`
     # describing what that odor is (e.g. the chemical name).
     #
     # 'log10_conc' / 'abbrev' are optional but used in some places (printing).
     #
     # Other data is totally optional.
-    assert all([('name' in o) for o in odors])
-    assert type(odors) is list
+    #
+    # *= except 'air_mix': <list-of-aliases-to-other-odor-vials> entries, which should
+    # only have the 'air_mix' key, pointing to a single list of aliases (and all of
+    # those aliases should be referenced in an odor vial entry elsewhere in the list)
+    assert all(type(x) is dict for x in odors)
+    assert all([('name' in o) or (is_air_mix(o) and o.keys() == {air_mix_key})
+        for o in odors
+    ])
+
+    seen_aliases = set()
+    for o in odors:
+        alias = o.get('alias')
+        if alias is None:
+            continue
+
+        assert alias not in seen_aliases, f'alias {alias} duplicate! must be unique'
+        seen_aliases.add(alias)
+
+
+    for o in odors:
+        if air_mix_key not in o:
+            continue
+
+        aliases_for_odors_to_mix_in_air = o[air_mix_key]
+        assert type(aliases_for_odors_to_mix_in_air) is list
+
+        # single vial presented alone is not a mixture, and should be handled more
+        # simply
+        assert len(aliases_for_odors_to_mix_in_air) > 1
+
+        assert all(x in seen_aliases for x in aliases_for_odors_to_mix_in_air)
+
+    # TODO also check length of air mix values fits w/in # of manifolds? or do that
+    # elsewhere (need access to hardware config)?
+    # (could return max number of components we want to mix in air from this fn?
+    # bit ugly...)
+    # TODO also check we don't have cases like [A,B], [A,C], and [C,B] (which we can't
+    # do w/ 2 manifolds, because we need odors to mix on diff manifolds, and we can't
+    # have all of these combos on diff manifolds w/ just 2 of them)
 
 
 # Could probably replace this whole fn w/ subsetting dict and using ==, except maybe
@@ -364,8 +411,20 @@ def validate_odors(odors: List[dict]) -> None:
 def odors_equal(o1: dict, o2: dict) -> bool:
     """Returns whether two odor dicts should be considered equal.
 
-    Currently only checks 'name' and 'log10_conc' keys.
+    Currently only checks 'name' and 'log10_conc' keys (except in case an input has only
+    an 'air_mix' key, which should have a list of aliases to other odor vials behind
+    that).
     """
+    if is_air_mix(o1) or is_air_mix(o2):
+        if is_air_mix(o1) and is_air_mix(o2):
+            aliases_for_odors_to_mix_in_air1 = set(o1[air_mix_key])
+            aliases_for_odors_to_mix_in_air2 = set(o2[air_mix_key])
+            if aliases_for_odors_to_mix_in_air1 == aliases_for_odors_to_mix_in_air2:
+                return True
+
+        return False
+
+
     if o1['name'] != o2['name']:
         return False
 
@@ -388,7 +447,14 @@ def odors_equal(o1: dict, o2: dict) -> bool:
 
 
 def get_odors(config_dict: ConfigDict) -> Tuple[List[dict], List[dict]]:
+    # TODO elaborate about (/delete) last part of doc, w/ odors-in-parallel-having-same-
+    # name restriction?
     """Returns unique list of odor dicts, for mapping to pins, and full list in order.
+
+    Validates ordered list of odors from input, but otherwise returns as-is.
+
+    No 'air_mix' entries will not be included in *UNIQUE* odors returned (as they don't
+    consume any additional pins) but *WILL* be included in ordered list of odors.
 
     Odors are considered equal as long as they match on 'name' / 'log10_conc' keys, and
     the returned list will currently only include the first of each odor within each
@@ -409,6 +475,9 @@ def get_odors(config_dict: ConfigDict) -> Tuple[List[dict], List[dict]]:
     # some fields?
     equiv_odors = []
     for o in odors:
+        if is_air_mix(o):
+            continue
+
         already_in_equiv = False
         for eo in equiv_odors:
             if odors_equal(o, eo):

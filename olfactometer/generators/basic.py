@@ -47,6 +47,27 @@ from copy import deepcopy
 from olfactometer.generators import common
 
 
+def get_pin_for_odor(pins2odors, odor) -> int:
+    """
+    Assumes that if `odor` is not a dict, then it is an alias for an odor (which should
+    currently be a str, though that is not enforced).
+    """
+    pin = None
+    for p, pin_odor in pins2odors.items():
+
+        # == won't behave as we want here, hence the custom equality checking fn
+        if (type(odor) is dict and common.odors_equal(odor, pin_odor)) or (
+            'alias' in pin_odor and pin_odor['alias'] == odor):
+
+            pin = p
+            break
+
+    # TODO separate error message depending on whether it was an alias or odor dict that
+    # wasn't found?
+    assert pin is not None
+    return pin
+
+
 # TODO TODO add option to ignore odors from a list of other configs (+thread thru to olf
 # CLI) (e.g. so that i don't do diagnostics in remy's megamat panel)
 def make_config_dict(generator_config_yaml_dict):
@@ -96,14 +117,36 @@ def make_config_dict(generator_config_yaml_dict):
     # assembly (more strain on some of the parts. i should probably just remake them w/
     # longer tubing / diff spacing tho...)?
 
+    # TODO just delete single_manifold return value (the 3rd returned arg) from def of
+    # common.get_available_pins? can always check set of pins2balances.values()...
     available_valve_pins, pins2balances, single_manifold = common.get_available_pins(
         data, generated_config_dict
     )
+    n_manifolds = len(set(pins2balances.values()))
 
+    # unique_odors will not include the air_mix entries, but odors_in_order will
     unique_odors, odors_in_order = common.get_odors(data)
+
+    have_air_mixes = any(common.is_air_mix(o) for o in odors_in_order)
+    if have_air_mixes:
+        # each element of this should be a list of aliases
+        air_mixes = [
+            o[common.air_mix_key] for o in odors_in_order if common.is_air_mix(o)
+        ]
+        # validate_odors should have all ready checked these lists only refer to aliases
+        # defined for another odor in the list
+        assert all(len(mix_odors) <= n_manifolds for mix_odors in air_mixes), (
+            'some air_mix entries requested more components than number of '
+            f'available manifolds ({n_manifolds})'
+        )
 
     n_odors = len(unique_odors)
     if n_odors > len(available_valve_pins):
+        if have_air_mixes:
+            raise NotImplementedError('air_mix entries currently only supported if '
+                'odors fit into available pins/manifolds (without splitting into '
+                'separate runs)'
+            )
 
         # TODO should it be an error if this is False, but randomize_presentation_order
         # is True?
@@ -114,6 +157,8 @@ def make_config_dict(generator_config_yaml_dict):
         )
         assert randomly_split_odors_into_runs in (True, False)
 
+        # NOTE: as-is, this would currently also fail in have_air_mixes=True case
+        #
         # TODO why did i impose this? i guess we might either get the same odor twice in
         # a recording? or if we are specifying it twice, it's probably because the
         # specific order or important? change error message to reflect that?
@@ -148,6 +193,15 @@ def make_config_dict(generator_config_yaml_dict):
     fit_into_one_manifold_if_possible = data.get('fit_into_one_manifold_if_possible',
         True
     )
+    # TODO doc that this defaults to False in have_air_mixes case?
+    # (or warn/err in one of unset/explicitly-True cases?)
+    if have_air_mixes:
+        # would just be more work to support
+        fit_into_one_manifold_if_possible = False
+
+    # validate_odors (via get_odors) already validated aliases are unique
+    alias2odor = {o['alias']: o for o in odors_in_order if 'alias' in o}
+
     odor_pins = None
     if fit_into_one_manifold_if_possible:
         balance_pins = set(pins2balances.values())
@@ -162,16 +216,57 @@ def make_config_dict(generator_config_yaml_dict):
             group_to_use = random.choice(groups_that_could_fit_all)
             odor_pins = random.sample(group_to_use, n_odors)
 
-    if odor_pins is None:
-        # The means of generating the random odor vial <-> pin (valve) mapping.
-        odor_pins = random.sample(available_valve_pins, n_odors)
 
-    # The YAML dump downstream (which SHOULD include this data) should sort the
-    # keys by default (just for display purposes, but still what I want).
-    # TODO maybe still re-order (by making a new dict and adding in the order i
-    # want), because sort_keys=True default also re-orders some other things i
-    # don't want it to
-    pins2odors = {p: o for p, o in zip(odor_pins, unique_odors)}
+    # if this is False, we would need to open >=2 valves on one manifold to deliver a
+    # mix, and we don't want to do that (b/c we don't want to rely on flow being divided
+    # evenly between simultaneously open valves)
+    def mix_components_on_diff_manifolds(pins2odors) -> bool:
+        for air_mix in air_mixes:
+            component_pins = [get_pin_for_odor(pins2odors, alias) for alias in air_mix]
+            assert len(component_pins) == len(set(component_pins))
+
+            component_balances = [pins2balances[p] for p in component_pins]
+            # at least 2 components are sharing a balance (and thus sharing a manifold.
+            # each manifold has its own balance.)
+            if len(component_balances) > len(set(component_balances)):
+                return False
+
+        return True
+
+
+    pins2odors = None
+    if odor_pins is None:
+        # bounding tries as easy way to fail in [A,B], [B,C], [A,C] (air_mixes) case
+        # (not possible on 2 manifolds) (otherwise, should have to be really
+        # unlikely for it to not work in that many tries. could hardcode this higher
+        # if needed.)
+        max_attempts = 500
+        for i in range(max_attempts):
+            # The means of generating the random odor vial <-> pin (valve) mapping.
+            curr_odor_pins = random.sample(available_valve_pins, n_odors)
+
+            pins2odors = {p: o for p, o in zip(curr_odor_pins, unique_odors)}
+            if not have_air_mixes or mix_components_on_diff_manifolds(pins2odors):
+                odor_pins = curr_odor_pins
+                break
+
+        if odor_pins is None:
+            # (if we got really unlucky)
+            raise RuntimeError('failed to generate odor_pins that keeps air_mix '
+                'components on different manifolds. most likely mix combinations '
+                'specified can not all be presented on this number of manifolds '
+                f'({n_manifolds}). re-trying could fix if you were really unlucky.'
+            )
+    else:
+        # The YAML dump downstream (which SHOULD include this data) should sort the
+        # keys by default (just for display purposes, but still what I want).
+        # TODO maybe still re-order (by making a new dict and adding in the order i
+        # want), because sort_keys=True default also re-orders some other things i
+        # don't want it to
+        pins2odors = {p: o for p, o in zip(odor_pins, unique_odors)}
+
+    assert pins2odors is not None
+
 
     randomize_presentation_order_key = 'randomize_presentation_order'
     # TODO refactor to some bool parse fn in common/above?
@@ -211,13 +306,18 @@ def make_config_dict(generator_config_yaml_dict):
     # this (as well as similar code in common.get_odors)
     trial_pins_norepeats = []
     for o in odors_in_order:
-        found_pin = False
-        for p, pin_odor in pins2odors.items():
-            if common.odors_equal(o, pin_odor):
-                trial_pins_norepeats.append(p)
-                found_pin = True
-                break
-        assert found_pin
+        if not common.is_air_mix(o):
+            # TODO TODO TODO also want types in here to be list now, for consistency w/
+            # air_mix case below?
+            trial_pins_norepeats.append(get_pin_for_odor(pins2odors, o))
+        else:
+            component_aliases = o[common.air_mix_key]
+            # we have already checked that, when generating pins2odors above, all mix
+            # components will be on diff manifolds
+            component_pins = [
+                get_pin_for_odor(pins2odors, alias) for alias in component_aliases
+            ]
+            trial_pins_norepeats.append(component_pins)
 
     if consecutive_repeats:
         if randomize_presentation_order:
@@ -232,6 +332,8 @@ def make_config_dict(generator_config_yaml_dict):
         trial_pins = [p for p in trial_pins_norepeats for _ in range(n_repeats)]
     else:
         trial_pins = []
+        # TODO better err message if YAML has `consecutive_repeats: True`, but doesn't
+        # specify this (to True, i think). currently getting UnboundLocalError.
         if independent_block_shuffles:
             for _ in range(n_repeats):
                 curr_block_shuffle = random.sample(trial_pins_norepeats,
@@ -246,7 +348,8 @@ def make_config_dict(generator_config_yaml_dict):
             for _ in range(n_repeats):
                 trial_pins.extend(block_shuffle)
 
-    trial_pinlists = [[p] for p in trial_pins]
+    # air mix entries will now already be list-of-ints in trial_pins
+    trial_pinlists = [[p] if type(p) is int else p for p in trial_pins]
 
     pinlist_at_each_trial = common.add_balance_pins(
         trial_pinlists, pins2balances
