@@ -41,7 +41,7 @@ setup(
         # NOTE: I had some issues w/ 0.4.5.post1 and installing this version
         # specifically fixed it (command some of my upload machinery expects is absent
         # here)
-        'nanopb==0.4.4',
+        'nanopb==0.4.5.post1',
 
         # Using the version from my fork, so that I can specify read timeout in
         # FlowMeter constructor.
