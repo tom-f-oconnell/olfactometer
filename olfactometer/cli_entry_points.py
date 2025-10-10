@@ -298,10 +298,13 @@ def one_valve_cli():
 def flush_cli():
     parser = util.argparse_run_args(config_path=False, wait_option=False)
 
-    default_n_repeats = 3
+    # seems to be about the max possible (given how long of a pin sequence will fit in
+    # memory, at least when hardware has 2 balances) on Arduino Megas I have been using
+    default_n_repeats = 8
     util.add_argparse_repeat_arg(parser, default_n_repeats)
 
-    default_on_s = 10.0
+    # TODO edit this comment for accurate time. ~24 min?
+    default_on_s = 15.0
     default_off_s = 0.2
     util.add_argparse_timing_args(parser, default_on_s, default_off_s)
 
