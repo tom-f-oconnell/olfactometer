@@ -68,6 +68,10 @@ def get_pin_for_odor(pins2odors, odor) -> int:
     return pin
 
 
+def is_co2(odor: dict) -> bool:
+    return odor['name'].upper() == 'CO2'
+
+
 # TODO TODO add option to ignore odors from a list of other configs (+thread thru to olf
 # CLI) (e.g. so that i don't do diagnostics in remy's megamat panel)
 def make_config_dict(generator_config_yaml_dict):
@@ -267,26 +271,30 @@ def make_config_dict(generator_config_yaml_dict):
 
     assert pins2odors is not None
 
-
     randomize_presentation_order_key = 'randomize_presentation_order'
     # TODO refactor to some bool parse fn in common/above?
     if randomize_presentation_order_key in data:
         randomize_presentation_order = data[randomize_presentation_order_key]
         assert randomize_presentation_order in (True, False)
     else:
-        if len(odors) > 1:
+        # TODO why special case len(odors_in_order) == 1 anyway? won't randomization do
+        # nothing there anyway? remove?
+        if len(odors_in_order) > 1:
             warnings.warn(f'defaulting to {randomize_presentation_order_key}'
                 '=True, since not specified in config'
             )
             randomize_presentation_order = True
         else:
-            assert len(odors) == 1
+            assert len(odors_in_order) == 1
             randomize_presentation_order = False
 
     consecutive_repeats = data.get('consecutive_repeats', True)
 
     block_shuffle_key = 'independent_block_shuffles'
-    if block_shuffle_key in data:
+    # TODO why do i need block_shuffle_key if i can just set `consecutive_repeat:
+    # False` for `randomize_presentation_order: True`? could prob simplify
+    independent_block_shuffles = data.get(block_shuffle_key, True)
+    if independent_block_shuffles:
         assert randomize_presentation_order, ('randomize_presentation_order must be '
             f'True if {block_shuffle_key} specified'
         )
@@ -295,7 +303,6 @@ def make_config_dict(generator_config_yaml_dict):
         assert not consecutive_repeats, (f'{block_shuffle_key} should only be '
             'specified if consecutive_repeats=False also specified'
         )
-        independent_block_shuffles = data.get(block_shuffle_key, True)
 
     # if consecutive_repeats=False, this is number of "blocks". otherwise, it is the
     # number of consecutive presentations of each odor. in either case, it's the number
@@ -307,8 +314,8 @@ def make_config_dict(generator_config_yaml_dict):
     trial_pins_norepeats = []
     for o in odors_in_order:
         if not common.is_air_mix(o):
-            # TODO TODO TODO also want types in here to be list now, for consistency w/
-            # air_mix case below?
+            # TODO also want types in here to be list now, for consistency w/ air_mix
+            # case below?
             trial_pins_norepeats.append(get_pin_for_odor(pins2odors, o))
         else:
             component_aliases = o[common.air_mix_key]
@@ -354,6 +361,38 @@ def make_config_dict(generator_config_yaml_dict):
     pinlist_at_each_trial = common.add_balance_pins(
         trial_pinlists, pins2balances
     )
+
+    co2_odors = [o for o in odors_in_order if is_co2(o)]
+    if len(co2_odors) > 0:
+        if len(co2_odors) > 1:
+            # Since we only have one 'co2_pin', and don't currently support varying MFC
+            # flows to get different CO2 concs (currently assuming log10_conc accurately
+            # reflects air dilution between manually entered CO2 flow and currently set
+            # odor + carrier flows.
+            raise NotImplementedError('can only specify CO2 once')
+        co2_odor = co2_odors[0]
+
+        curr_co2_pins = [p for p, o in pins2odors.items() if is_co2(o)]
+        assert len(curr_co2_pins) == 1
+        curr_co2_pin = curr_co2_pins[0]
+
+        co2_air_compensation_odor = {
+            'name': 'air for co2-mixture compensation (leave disconnected)',
+            'log10_conc': 0,
+        }
+        pins2odors[curr_co2_pin] = co2_air_compensation_odor
+
+        assert 'co2_pin' in data, '`co2_pin: <int>` not specified in hardware YAML'
+        co2_pin = data['co2_pin']
+        pins2odors[co2_pin] = co2_odor
+
+        assert not any([co2_pin in pl for pl in pinlist_at_each_trial])
+        # TODO disable warning about PinSequence having unequal length groups, either
+        # generally, or specifically for these cases (just warning in _DEBUG case
+        # anyway, so fine to leave)
+        pinlist_at_each_trial = [pl + [co2_pin] if curr_co2_pin in pl else pl
+            for pl in pinlist_at_each_trial
+        ]
 
     generated_config_dict['pins2odors'] = pins2odors
     common.add_pinlist(pinlist_at_each_trial, generated_config_dict)
