@@ -291,10 +291,7 @@ def make_config_dict(generator_config_yaml_dict):
     consecutive_repeats = data.get('consecutive_repeats', True)
 
     block_shuffle_key = 'independent_block_shuffles'
-    # TODO why do i need block_shuffle_key if i can just set `consecutive_repeat:
-    # False` for `randomize_presentation_order: True`? could prob simplify
-    independent_block_shuffles = data.get(block_shuffle_key, True)
-    if independent_block_shuffles:
+    if block_shuffle_key in data:
         assert randomize_presentation_order, ('randomize_presentation_order must be '
             f'True if {block_shuffle_key} specified'
         )
@@ -338,6 +335,13 @@ def make_config_dict(generator_config_yaml_dict):
 
         trial_pins = [p for p in trial_pins_norepeats for _ in range(n_repeats)]
     else:
+        # TODO why do i need block_shuffle_key if i can just set `consecutive_repeat:
+        # False` for `randomize_presentation_order: True`? could prob simplify
+        # (i think it was to control whether or not each block has a different order.
+        # doc better + verify behavior. may not be supporting both True/False as
+        # intended)
+        independent_block_shuffles = data.get(block_shuffle_key, True)
+
         trial_pins = []
         # TODO better err message if YAML has `consecutive_repeats: True`, but doesn't
         # specify this (to True, i think). currently getting UnboundLocalError.
