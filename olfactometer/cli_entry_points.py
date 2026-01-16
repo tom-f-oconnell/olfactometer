@@ -126,6 +126,10 @@ def valve_test_cli():
         'in order passed.'
     )
 
+    parser.add_argument('-c', '--skip-co2', action='store_true', help='if passed, will '
+        'not test valve for any "co2_pin: <int>" that might be exist in hardware config'
+    )
+
     kwargs = util.parse_args(parser)
 
     hardware_config = kwargs.pop('hardware_config')
@@ -134,6 +138,7 @@ def valve_test_cli():
     n_repeats = kwargs.pop('n_repeats')
     use_balances = kwargs.pop('use_balances')
     cli_pins = kwargs.pop('cli_pins')
+    skip_co2 = kwargs.pop('skip_co2')
 
     if cli_pins is not None:
         if use_balances:
@@ -142,6 +147,9 @@ def valve_test_cli():
             )
 
         cli_pins = [int(p) for p in cli_pins.split(',')]
+
+        # could manually specify this pin if they wanted
+        skip_co2 = True
 
     if n_repeats is None:
         if not use_balances:
@@ -213,6 +221,13 @@ def valve_test_cli():
             settings_dict = generated_config_dict[common.settings_key]
             settings_dict['balance_pin'] = balance_pin
             del balance_pin, settings_dict
+
+    if not skip_co2 and 'co2_pin' in config_data:
+        co2_pin = config_data['co2_pin']
+        print(f'Also testing valve for "co2_pin: {co2_pin}" in hardware config (skip '
+            'with -c)'
+        )
+        pinlist_at_each_trial.extend([[co2_pin] for _ in range(n_repeats)])
 
     common.add_pinlist(pinlist_at_each_trial, generated_config_dict)
 

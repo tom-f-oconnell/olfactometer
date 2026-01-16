@@ -43,19 +43,24 @@ post_pulse_s: 11
 import random
 import warnings
 from copy import deepcopy
+from typing import Any, Dict, Union
 
 from olfactometer.generators import common
 
 
-def get_pin_for_odor(pins2odors, odor) -> int:
+def get_pin_for_odor(pins2odors: Dict[int, Dict[str, Any]], odor: Union[dict, str]
+    ) -> int:
     """
     Assumes that if `odor` is not a dict, then it is an alias for an odor (which should
-    currently be a str, though that is not enforced).
+    currently be a str).
     """
+    if type(odor) is not dict:
+        assert type(odor) is str
+
     pin = None
     for p, pin_odor in pins2odors.items():
-
         # == won't behave as we want here, hence the custom equality checking fn
+        # TODO provide example of equality not doing what i want?
         if (type(odor) is dict and common.odors_equal(odor, pin_odor)) or (
             'alias' in pin_odor and pin_odor['alias'] == odor):
 
@@ -68,12 +73,16 @@ def get_pin_for_odor(pins2odors, odor) -> int:
     return pin
 
 
-def is_co2(odor: dict) -> bool:
+def is_co2(odor: Dict[str, Any]) -> bool:
+    # these should be only input that doesn't have a 'name' key
+    if common.is_air_mix(odor):
+        return False
+
     return odor['name'].upper() == 'CO2'
 
 
-# TODO TODO add option to ignore odors from a list of other configs (+thread thru to olf
-# CLI) (e.g. so that i don't do diagnostics in remy's megamat panel)
+# TODO add option to ignore odors from a list of other configs (+thread thru to olf
+# CLI) (e.g. so that i don't do diagnostics in remy's megamat panel)?
 def make_config_dict(generator_config_yaml_dict):
     # TODO doc the minimum expected keys of the YAML
     """
@@ -131,18 +140,9 @@ def make_config_dict(generator_config_yaml_dict):
     # unique_odors will not include the air_mix entries, but odors_in_order will
     unique_odors, odors_in_order = common.get_odors(data)
 
+    # TODO want to add support for mixes without the components actually being
+    # presented? (despite maybe needing to be in list here)
     have_air_mixes = any(common.is_air_mix(o) for o in odors_in_order)
-    if have_air_mixes:
-        # each element of this should be a list of aliases
-        air_mixes = [
-            o[common.air_mix_key] for o in odors_in_order if common.is_air_mix(o)
-        ]
-        # validate_odors should have all ready checked these lists only refer to aliases
-        # defined for another odor in the list
-        assert all(len(mix_odors) <= n_manifolds for mix_odors in air_mixes), (
-            'some air_mix entries requested more components than number of '
-            f'available manifolds ({n_manifolds})'
-        )
 
     n_odors = len(unique_odors)
     if n_odors > len(available_valve_pins):
@@ -215,15 +215,34 @@ def make_config_dict(generator_config_yaml_dict):
         ]
         del balance_pins
 
+        # even CO2 should count here (even though it's delivered by a separate valve,
+        # with its own dedicated pin), b/c we will still need the dummy valve to take up
+        # an odor slot
         groups_that_could_fit_all = [g for g in pin_groups if (len(g) >= n_odors)]
         if len(groups_that_could_fit_all) > 0:
             group_to_use = random.choice(groups_that_could_fit_all)
             odor_pins = random.sample(group_to_use, n_odors)
 
+    if have_air_mixes:
+        # each element of this should be a list of aliases
+        air_mixes = [
+            o[common.air_mix_key] for o in odors_in_order if common.is_air_mix(o)
+        ]
+        # validate_odors should have all ready checked these lists only refer to aliases
+        # defined for another odor in the list
+        assert all(len(mix_odors) <= n_manifolds for mix_odors in air_mixes), (
+            'some air_mix entries requested more components than number of '
+            f'available manifolds ({n_manifolds})'
+        )
 
     # if this is False, we would need to open >=2 valves on one manifold to deliver a
     # mix, and we don't want to do that (b/c we don't want to rely on flow being divided
     # evenly between simultaneously open valves)
+    #
+    # even CO2 should count here (even though it's delivered by a separate valve, with
+    # its own dedicated pin), b/c we will still need the dummy valve to take up an odor
+    # slot (and this will need to be the only non-balance valve actuated on that
+    # manifold, with current hardware strategy)
     def mix_components_on_diff_manifolds(pins2odors) -> bool:
         for air_mix in air_mixes:
             component_pins = [get_pin_for_odor(pins2odors, alias) for alias in air_mix]
@@ -236,7 +255,6 @@ def make_config_dict(generator_config_yaml_dict):
                 return False
 
         return True
-
 
     pins2odors = None
     if odor_pins is None:
@@ -366,10 +384,14 @@ def make_config_dict(generator_config_yaml_dict):
         trial_pinlists, pins2balances
     )
 
+    # TODO test mixing-with-co2 w/ more odors than can fit on one manifold? (currently
+    # fails w/ expected RuntimeError) (could only work for mixing with CO2, not for
+    # mixing arbitrary combinations of odors. would require one dummy valve per
+    # manifold.)
     co2_odors = [o for o in odors_in_order if is_co2(o)]
     if len(co2_odors) > 0:
         if len(co2_odors) > 1:
-            # Since we only have one 'co2_pin', and don't currently support varying MFC
+            # since we only have one 'co2_pin', and don't currently support varying MFC
             # flows to get different CO2 concs (currently assuming log10_conc accurately
             # reflects air dilution between manually entered CO2 flow and currently set
             # odor + carrier flows.
@@ -380,14 +402,17 @@ def make_config_dict(generator_config_yaml_dict):
         assert len(curr_co2_pins) == 1
         curr_co2_pin = curr_co2_pins[0]
 
+        assert 'co2_pin' in data, '`co2_pin: <int>` not specified in hardware YAML'
+        co2_pin = data['co2_pin']
+
+        # aka "dummy" valve. should not be plugged (lest it cause pressure transients),
+        # but should output either loose into box (which would be unlikely to be
+        # perceived), or directed to vent funnel via a loose coupling.
         co2_air_compensation_odor = {
             'name': 'air for co2-mixture compensation (leave disconnected)',
             'log10_conc': 0,
         }
         pins2odors[curr_co2_pin] = co2_air_compensation_odor
-
-        assert 'co2_pin' in data, '`co2_pin: <int>` not specified in hardware YAML'
-        co2_pin = data['co2_pin']
         pins2odors[co2_pin] = co2_odor
 
         assert not any([co2_pin in pl for pl in pinlist_at_each_trial])

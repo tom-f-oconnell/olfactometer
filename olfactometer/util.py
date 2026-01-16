@@ -112,6 +112,8 @@ def format_odor(odor_dict, show_abbrevs=True):
     return odor_str
 
 
+# TODO exclude 'air for co2-mixture compensation (leave disconnected)' here? refactor to
+# share def of that w/ generators/basic.py?
 def format_mixture_pins(pins2odors, trial_pins, delimiter=' AND ',
     **format_odor_kwargs):
 
